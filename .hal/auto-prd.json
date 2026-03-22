@@ -143,8 +143,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated the standard `npm test` workflow to run `npm run build` before `node --test`, so the state, hooks, SSE, memo-store, and UI route regressions execute against fresh `dist/` output without extra manual steps; verified with `npm test` and `npm run lint`."
     }
   ]
 }

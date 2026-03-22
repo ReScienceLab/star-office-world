@@ -4,7 +4,7 @@
 
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
 - `getPublicState()` must deep-copy nested collections (`agents`, `rooms`, memos, config/background objects) before returning snapshots; shallow copies expose live state to REST/SSE callers.
-- The current `node --test test/*.test.mjs` harness imports built files from `dist/`, so run `npm run build` before `npm test` whenever source changes affect test coverage.
+- The test suite imports built files from `dist/`; keep `npm test` responsible for rebuilding first so contributors and CI always run tests against fresh output.
 - The AWN SDK calls the same `onLeave(agentId)` hook for explicit `world.leave` and idle eviction; distinguish the two inside `src/hooks.ts` by comparing the agent's `lastSeenAt` to `manifest.lifecycle.idleTimeoutMs`.
 - Presence SSE names should mirror the inferred leave path in `src/hooks.ts`: idle eviction broadcasts `agent_offline`, while voluntary exits broadcast `agent_leave`.
 - Hook actions should treat `MemoStore` persistence as best-effort after canonical in-memory updates so transient filesystem failures do not break runtime action success.
@@ -101,4 +101,14 @@
   - Patterns discovered: `SSEManager` can be tested in isolation with a minimal `reply.raw.write()` collector and `close` emitter, which keeps browser-event regressions fast and deterministic.
   - Gotchas encountered: Route contract checks should compare the actual JSON response from `/ui/state` against `createManifest(...).state_fields`, not just a cloned in-memory snapshot, so the browser-facing interface is what stays locked down.
   - Useful context: The standard workflow remains `npm run build && npm test && npm run lint` because the tests import `dist/` artifacts.
+---
+
+## 2026-03-22 16:58:41 UTC - T-010
+- Updated the standard `npm test` script to rebuild `dist/` before running `node --test`, so the new state, hooks, SSE, memo-store, and UI route regressions run through the default project workflow without extra manual steps.
+- Aligned the README quick start so testing points at `npm test`, while start instructions still build before `npm start`.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `README.md`, `package.json`
+- **Learnings for future iterations:**
+  - Patterns discovered: When tests import `dist/`, the standard `npm test` script itself should own the rebuild step instead of relying on contributors to remember a manual pre-build.
+  - Gotchas encountered: Leaving the rebuild outside `npm test` makes new regressions appear flaky because stale compiled output can mask source changes.
+  - Useful context: `npm test` now covers all 10 focused regressions end-to-end, and `npm run lint` remains the project's TypeScript no-emit check.
 ---
