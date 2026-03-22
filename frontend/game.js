@@ -329,6 +329,17 @@ function registerOfficeEventStream(scene, eventSource) {
     applySceneStateEvent(scene, parsed.payload.raw);
   });
 
+  for (const eventType of ['agent_join', 'agent_update', 'agent_leave', 'agent_offline']) {
+    eventSource.addEventListener(eventType, (event) => {
+      const parsed = parseSSEEventPayload(eventType, event && event.data);
+      if (!parsed) return;
+
+      const nextSyncState = getSSESyncState(scene);
+      nextSyncState.lastEventType = parsed.type;
+      applyOfficeAgentStreamEvent(parsed.type, parsed.payload);
+    });
+  }
+
   return eventSource;
 }
 
@@ -459,6 +470,67 @@ function getMainAgentPayloadFromStateSnapshot(snapshotAgents) {
     state: normalizeState(mainAgent.state),
     detail: typeof mainAgent.detail === 'string' ? mainAgent.detail : '...'
   };
+}
+
+function getStoredOfficeAgentMeta(agentId) {
+  const container = agents[agentId];
+  if (!container || !container.officeAgentMeta || !isPlainObject(container.officeAgentMeta)) {
+    return null;
+  }
+  return container.officeAgentMeta;
+}
+
+function getNextOfficeAgentSlotIndex(area, excludeAgentId) {
+  const usedSlots = new Set();
+  for (const agentId in agents) {
+    if (agentId === excludeAgentId) continue;
+    const meta = getStoredOfficeAgentMeta(agentId);
+    if (!meta || meta.area !== area || typeof meta.slotIndex !== 'number') continue;
+    usedSlots.add(meta.slotIndex);
+  }
+
+  let slotIndex = 0;
+  while (usedSlots.has(slotIndex)) {
+    slotIndex += 1;
+  }
+  return slotIndex;
+}
+
+function assignOfficeAgentSlot(agent) {
+  if (!agent || !agent.agentId) return agent;
+
+  const area = typeof agent.area === 'string' ? agent.area : 'breakroom';
+  const existingMeta = getStoredOfficeAgentMeta(agent.agentId);
+  const slotIndex = typeof agent._slotIndex === 'number'
+    ? agent._slotIndex
+    : existingMeta && existingMeta.area === area
+      ? existingMeta.slotIndex
+      : getNextOfficeAgentSlotIndex(area, agent.agentId);
+
+  return {
+    ...agent,
+    area,
+    _slotIndex: slotIndex
+  };
+}
+
+function applyOfficeAgentStreamEvent(eventType, payload) {
+  if (!payload || !payload.agentId) return;
+
+  if (eventType === 'agent_leave') {
+    removeOfficeAgent(payload.agentId);
+    return;
+  }
+
+  if (eventType === 'agent_offline') {
+    if (!agents[payload.agentId]) return;
+    markOfficeAgentOffline(assignOfficeAgentSlot(payload));
+    return;
+  }
+
+  if (eventType === 'agent_join' || eventType === 'agent_update') {
+    applyOfficeAgentPayload(assignOfficeAgentSlot(payload));
+  }
 }
 
 function reconcileOfficeAgentsFromPayload(agentPayloads) {
@@ -1248,6 +1320,10 @@ function createOfficeAgent(agent) {
   statusDot.name = 'statusDot';
 
   container.add([starIcon, statusDot, nameTag]);
+  container.officeAgentMeta = {
+    area: agent.area || 'breakroom',
+    slotIndex: agent._slotIndex || 0
+  };
   agents[agentId] = container;
   return container;
 }
@@ -1266,6 +1342,10 @@ function updateOfficeAgent(agent) {
   container.setPosition(pos.x, pos.y);
   container.setAlpha(alpha);
   container.setDepth(1200 + (isMain ? 100 : 0));
+  container.officeAgentMeta = {
+    area: agent.area || 'breakroom',
+    slotIndex: agent._slotIndex || 0
+  };
 
   const starIcon = container.getAt(0);
   if (starIcon && starIcon.name === 'starIcon') {

@@ -100,8 +100,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Registered `/ui/events` listeners in `frontend/game.js` for `agent_join`, `agent_update`, `agent_leave`, and `agent_offline`, routing each parsed payload through a shared `applyOfficeAgentStreamEvent()` helper. Incremental SSE payloads now reuse office-agent lifecycle helpers with slot preservation and reassignment via stored container metadata, while malformed or partial payloads continue to no-op safely through the shared parser."
     },
     {
       "id": "T-008",

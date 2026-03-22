@@ -17,6 +17,7 @@
 - `frontend/game.js` should keep SSE transport health on the scene-owned `sseSync` object and funnel raw `/ui/events` payloads through `parseSSEEventPayload(eventType, rawData)` so malformed JSON and partial agent events degrade safely to `null`.
 - `frontend/game.js` should open `/ui/events` only through `connectOfficeEventStream(scene)` during `create()`, with `registerOfficeEventStream()` owning the `open`/`error` health transitions so later SSE state and agent handlers reuse the same lifecycle-managed EventSource.
 - `frontend/game.js` should treat the `/ui/events` `state` event as a full `getPublicState()` snapshot: derive the main-agent status from the first online agent (or first available agent), then translate `state.agents` back through `reconcileOfficeAgentsFromPayload()` instead of assuming the `/status` or `/agents` response shapes.
+- `frontend/game.js` should route incremental `agent_join`/`agent_update`/`agent_leave`/`agent_offline` events through `applyOfficeAgentStreamEvent()` plus `assignOfficeAgentSlot()` so live SSE updates preserve existing area slots, reuse the shared office-agent lifecycle helpers, and avoid creating ghost offline agents.
 
 ---
 
@@ -173,4 +174,13 @@
   - Patterns discovered: The browser `state` event carries a full public state snapshot, so frontend bootstrap should translate `state.agents` into the existing main-agent and office-agent helper payloads instead of reading it like `/status`.
   - Gotchas encountered: Browser verification was skipped because this workspace still has no browser verification skill installed, so this frontend iteration relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
   - Useful context: Matching `/status`, the SSE bootstrap picks the first online agent as the main Star status source and falls back to the first available agent when everyone is offline.
+---
+## 2026-03-22 17:35:54 UTC - T-007
+- Registered incremental `/ui/events` handlers in `frontend/game.js` for `agent_join`, `agent_update`, `agent_leave`, and `agent_offline`, routing them through a shared stream-event helper that reuses the existing office-agent lifecycle functions.
+- Added scene-side slot bookkeeping so live SSE joins and area changes preserve existing positions when possible and pick the next free slot when an agent moves into a new area, while offline events only affect already-rendered agents.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`
+- **Learnings for future iterations:**
+  - Patterns discovered: Incremental agent SSE events should flow through `applyOfficeAgentStreamEvent()` and `assignOfficeAgentSlot()` so join/update/offline semantics stay aligned with the shared office-agent helper path and area-slot placement remains deterministic.
+  - Gotchas encountered: `agent_offline` payloads can be partial presence updates, so the frontend should ignore unknown agent IDs there instead of creating new offline sprites that were never rendered from bootstrap or join events.
+  - Useful context: Browser verification was skipped because this workspace still has no browser verification skill installed, so this frontend iteration relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
 ---
