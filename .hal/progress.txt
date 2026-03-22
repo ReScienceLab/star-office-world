@@ -13,6 +13,7 @@
 - Browser-facing SSE regressions can use an `SSEManager` client double with a minimal `reply.raw` EventEmitter to assert exact streamed event payloads without booting Fastify.
 - `frontend/game.js` currently centralizes sync entry points in `create()` and `update()`: `fetchStatus()` owns main-agent UI/status mutation, while `fetchAgents()` owns remote office-agent reconciliation, so SSE work should reuse those boundaries and gate polling at the update loop.
 - `frontend/game.js` should route main-agent state/detail updates through `applyMainAgentPayload(payload)` so fetch bootstrap, compat refreshes, and upcoming SSE state events share the same animation/UI mutation path.
+- `frontend/game.js` should route remote office-agent payloads through `applyOfficeAgentPayload(agent)`, which delegates to shared `createOfficeAgent()`, `updateOfficeAgent()`, `removeOfficeAgent()`, and `markOfficeAgentOffline()` helpers so polling and future SSE events do not duplicate sprite lifecycle logic.
 
 ---
 
@@ -133,4 +134,13 @@
   - Patterns discovered: Main-agent frontend updates should flow through `applyMainAgentPayload(payload)` so polling, compat-triggered refreshes, and SSE state events stay behaviorally aligned.
   - Gotchas encountered: The frontend quality gate does not cover `frontend/` via `tsc`, so a quick `node --check frontend/game.js` is useful alongside the standard build/test/lint workflow after JS-only refactors.
   - Useful context: `applyMainAgentPayload()` already accepts missing payload fields defensively by normalizing absent state to `idle` and absent detail to `...`, which matches the existing `/status` fallback behavior.
+---
+
+## 2026-03-22 17:24:07 UTC - T-003
+- Extracted shared office-agent lifecycle helpers in `frontend/game.js` for create, update, remove, offline-marking, and plain-payload application, then rewired `/agents` polling and the debug-agent path to use those helpers.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`
+- **Learnings for future iterations:**
+  - Patterns discovered: Remote office-agent updates should flow through `applyOfficeAgentPayload(agent)` so fetch reconciliation and future SSE events share the same sprite lifecycle path.
+  - Gotchas encountered: The `/agents` polling path is still responsible for assigning per-area `_slotIndex` values before calling the shared helpers, so SSE event handlers will need an equivalent slot-assignment step or a stateful reuse strategy.
+  - Useful context: `markOfficeAgentOffline(agent)` now preserves the same container and just reapplies the payload with `authStatus: 'offline'`, which is the entry point to reuse for `agent_offline` SSE events.
 ---

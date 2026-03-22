@@ -601,7 +601,7 @@ function create() {
       authStatus: 'approved',
       updated_at: new Date().toISOString()
     };
-    renderAgent(testNika);
+    applyOfficeAgentPayload(testNika);
 
     window.testNikaState = 'writing';
     window.testNikaTimer = setInterval(() => {
@@ -618,7 +618,7 @@ function create() {
         authStatus: 'approved',
         updated_at: new Date().toISOString()
       };
-      renderAgent(testAgent);
+      applyOfficeAgentPayload(testAgent);
     }, 5000);
   }
 }
@@ -931,7 +931,8 @@ function showCatBubble() {
 
 function fetchAgents() {
   // Office-agent ownership:
-  // - Handles the `/agents` fetch path for non-main office occupants rendered via `renderAgent()`.
+  // - Handles the `/agents` fetch path for non-main office occupants rendered via the shared
+  //   office-agent lifecycle helpers below.
   // - Owns slot assignment, remote-agent create/update reconciliation, and removal of missing agents.
   // - Current callers: scene bootstrap in `create()` and update-loop polling in `update()`.
   // - When SSE lands, stream handlers should reuse this lifecycle boundary while fallback re-enables
@@ -947,16 +948,13 @@ function fetchAgents() {
         const area = agent.area || 'breakroom';
         agent._slotIndex = areaSlots[area] || 0;
         areaSlots[area] = (areaSlots[area] || 0) + 1;
-        renderAgent(agent);
+        applyOfficeAgentPayload(agent);
       }
       // 移除不再存在的 agent
       const currentIds = new Set(data.map(a => a.agentId));
       for (let id in agents) {
         if (!currentIds.has(id)) {
-          if (agents[id]) {
-            agents[id].destroy();
-            delete agents[id];
-          }
+          removeOfficeAgent(id);
         }
       }
     })
@@ -971,87 +969,119 @@ function getAreaPosition(area, slotIndex) {
   return positions[idx];
 }
 
-function renderAgent(agent) {
+function getOfficeAgentAlpha(authStatus) {
+  if (authStatus === 'pending') return 0.7;
+  if (authStatus === 'rejected') return 0.4;
+  if (authStatus === 'offline') return 0.5;
+  return 1;
+}
+
+function getOfficeAgentDotColor(authStatus) {
+  if (authStatus === 'approved') return 0x22c55e;
+  if (authStatus === 'pending') return 0xf59e0b;
+  if (authStatus === 'rejected') return 0xef4444;
+  if (authStatus === 'offline') return 0x94a3b8;
+  return 0x64748b;
+}
+
+function createOfficeAgent(agent) {
   const agentId = agent.agentId;
   const name = agent.name || 'Agent';
-  const area = agent.area || 'breakroom';
   const authStatus = agent.authStatus || 'pending';
   const isMain = !!agent.isMain;
-
-  // 获取这个 agent 在区域里的位置
-  const pos = getAreaPosition(area, agent._slotIndex || 0);
-  const baseX = pos.x;
-  const baseY = pos.y;
-
-  // 颜色
-  const bodyColor = AGENT_COLORS[agentId] || AGENT_COLORS.default;
+  const pos = getAreaPosition(agent.area || 'breakroom', agent._slotIndex || 0);
+  const alpha = getOfficeAgentAlpha(authStatus);
   const nameColor = NAME_TAG_COLORS[authStatus] || NAME_TAG_COLORS.default;
+  const dotColor = getOfficeAgentDotColor(authStatus);
 
-  // 透明度（离线/待批准/拒绝时变半透明）
-  let alpha = 1;
-  if (authStatus === 'pending') alpha = 0.7;
-  if (authStatus === 'rejected') alpha = 0.4;
-  if (authStatus === 'offline') alpha = 0.5;
+  const container = game.add.container(pos.x, pos.y);
+  container.setDepth(1200 + (isMain ? 100 : 0));
+  container.setAlpha(alpha);
 
-  if (!agents[agentId]) {
-    // 新建 agent
-    const container = game.add.container(baseX, baseY);
-    container.setDepth(1200 + (isMain ? 100 : 0)); // 放到最顶层！
+  const starIcon = game.add.text(0, 0, '⭐', {
+    fontFamily: 'ArkPixel, monospace',
+    fontSize: '32px'
+  }).setOrigin(0.5);
+  starIcon.name = 'starIcon';
+  starIcon.setTint(AGENT_COLORS[agentId] || AGENT_COLORS.default);
 
-    // 像素小人：用星星图标，更明显
-    const starIcon = game.add.text(0, 0, '⭐', {
-      fontFamily: 'ArkPixel, monospace',
-      fontSize: '32px'
-    }).setOrigin(0.5);
-    starIcon.name = 'starIcon';
+  const nameTag = game.add.text(0, -36, name, {
+    fontFamily: 'ArkPixel, monospace',
+    fontSize: '14px',
+    fill: '#' + nameColor.toString(16).padStart(6, '0'),
+    stroke: '#000',
+    strokeThickness: 3,
+    backgroundColor: 'rgba(255,255,255,0.95)'
+  }).setOrigin(0.5);
+  nameTag.name = 'nameTag';
 
-    // 名字标签（漂浮）
-    const nameTag = game.add.text(0, -36, name, {
-      fontFamily: 'ArkPixel, monospace',
-      fontSize: '14px',
-      fill: '#' + nameColor.toString(16).padStart(6, '0'),
-      stroke: '#000',
-      strokeThickness: 3,
-      backgroundColor: 'rgba(255,255,255,0.95)'
-    }).setOrigin(0.5);
-    nameTag.name = 'nameTag';
+  const statusDot = game.add.circle(20, -20, 5, dotColor, alpha);
+  statusDot.setStrokeStyle(2, 0x000000, alpha);
+  statusDot.name = 'statusDot';
 
-    // 状态小点（绿色/黄色/红色）
-    let dotColor = 0x64748b;
-    if (authStatus === 'approved') dotColor = 0x22c55e;
-    if (authStatus === 'pending') dotColor = 0xf59e0b;
-    if (authStatus === 'rejected') dotColor = 0xef4444;
-    if (authStatus === 'offline') dotColor = 0x94a3b8;
-    const statusDot = game.add.circle(20, -20, 5, dotColor, alpha);
-    statusDot.setStrokeStyle(2, 0x000000, alpha);
-    statusDot.name = 'statusDot';
+  container.add([starIcon, statusDot, nameTag]);
+  agents[agentId] = container;
+  return container;
+}
 
-    container.add([starIcon, statusDot, nameTag]);
-    agents[agentId] = container;
-  } else {
-    // 更新 agent
-    const container = agents[agentId];
-    container.setPosition(baseX, baseY);
-    container.setAlpha(alpha);
-    container.setDepth(1200 + (isMain ? 100 : 0));
+function updateOfficeAgent(agent) {
+  const agentId = agent.agentId;
+  const container = agents[agentId];
+  if (!container) return createOfficeAgent(agent);
 
-    // 更新名字和颜色（如果变化）
-    const nameTag = container.getAt(2);
-    if (nameTag && nameTag.name === 'nameTag') {
-      nameTag.setText(name);
-      nameTag.setFill('#' + (NAME_TAG_COLORS[authStatus] || NAME_TAG_COLORS.default).toString(16).padStart(6, '0'));
-    }
-    // 更新状态点颜色
-    const statusDot = container.getAt(1);
-    if (statusDot && statusDot.name === 'statusDot') {
-      let dotColor = 0x64748b;
-      if (authStatus === 'approved') dotColor = 0x22c55e;
-      if (authStatus === 'pending') dotColor = 0xf59e0b;
-      if (authStatus === 'rejected') dotColor = 0xef4444;
-      if (authStatus === 'offline') dotColor = 0x94a3b8;
-      statusDot.fillColor = dotColor;
-    }
+  const authStatus = agent.authStatus || 'pending';
+  const isMain = !!agent.isMain;
+  const pos = getAreaPosition(agent.area || 'breakroom', agent._slotIndex || 0);
+  const alpha = getOfficeAgentAlpha(authStatus);
+  const dotColor = getOfficeAgentDotColor(authStatus);
+
+  container.setPosition(pos.x, pos.y);
+  container.setAlpha(alpha);
+  container.setDepth(1200 + (isMain ? 100 : 0));
+
+  const starIcon = container.getAt(0);
+  if (starIcon && starIcon.name === 'starIcon') {
+    starIcon.setTint(AGENT_COLORS[agentId] || AGENT_COLORS.default);
   }
+
+  const nameTag = container.getAt(2);
+  if (nameTag && nameTag.name === 'nameTag') {
+    nameTag.setText(agent.name || 'Agent');
+    nameTag.setFill('#' + (NAME_TAG_COLORS[authStatus] || NAME_TAG_COLORS.default).toString(16).padStart(6, '0'));
+  }
+
+  const statusDot = container.getAt(1);
+  if (statusDot && statusDot.name === 'statusDot') {
+    statusDot.fillColor = dotColor;
+    statusDot.setFillStyle(dotColor, alpha);
+    statusDot.setStrokeStyle(2, 0x000000, alpha);
+  }
+
+  return container;
+}
+
+function removeOfficeAgent(agentId) {
+  if (!agents[agentId]) return;
+  agents[agentId].destroy();
+  delete agents[agentId];
+}
+
+function markOfficeAgentOffline(agent) {
+  if (!agent || !agent.agentId) return;
+  updateOfficeAgent({ ...agent, authStatus: 'offline' });
+}
+
+function applyOfficeAgentPayload(agent) {
+  if (!agent || !agent.agentId) return;
+  if ((agent.authStatus || 'pending') === 'offline') {
+    markOfficeAgentOffline(agent);
+    return;
+  }
+  if (!agents[agent.agentId]) {
+    createOfficeAgent(agent);
+    return;
+  }
+  updateOfficeAgent(agent);
 }
 
 // 启动游戏

@@ -41,8 +41,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Extracted shared office-agent helpers in `frontend/game.js` for create, update, remove, offline-marking, and plain-payload application. `fetchAgents()` now delegates to those helpers for payload reconciliation, and the debug agent path reuses the same helper entry point."
     },
     {
       "id": "T-004",
