@@ -133,6 +133,9 @@ export function registerUIRoutes(
   fastify.post("/set_state", async (req) => {
     const body = req.body as Record<string, unknown>;
     const state = getState();
+    // NOTE: This compat route currently edits the public snapshot returned by
+    // `getState()`. The canonical mutation flow lives in `updateAgentState()`
+    // in `src/state.ts`, which also rebuilds derived room membership.
     // Update first online agent or create a "host" agent
     const agents = Object.values(state.agents);
     let target = agents[0];

@@ -1,0 +1,16 @@
+# Ralph Progress Log
+
+## Codebase Patterns
+
+- UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
+
+---
+
+## 2026-03-22 16:34:46 UTC - T-001
+- Documented the current canonical runtime mutation path in `src/state.ts`, the compat `/set_state` route divergence in `src/ui-routes.ts`, and the room rebuild dependency point in `src/index.ts`.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/index.ts`, `src/state.ts`, `src/ui-routes.ts`
+- **Learnings for future iterations:**
+  - Patterns discovered: UI routes are wired with `getState: () => getPublicState(state)`, so direct mutation inside route handlers does not use the same path as AWN hooks.
+  - Gotchas encountered: `POST /set_state` currently mutates the public snapshot instead of calling `updateAgentState()`, which is why room rebuild behavior can diverge.
+  - Useful context: Derived `rooms` data is recalculated by `rebuildRooms()` from `state.agents`; startup currently only hydrates memo data, not agent state.
+---

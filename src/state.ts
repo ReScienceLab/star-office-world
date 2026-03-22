@@ -93,6 +93,9 @@ export function updateAgentState(
 ): OfficeAgent | null {
   const agent = state.agents[agentId];
   if (!agent) return null;
+  // Canonical runtime mutation path for agent presence/state changes.
+  // AWN actions call this helper so agent fields and derived room membership
+  // stay in sync before any public snapshot is returned or broadcast.
   agent.state = normalizeState(newState);
   agent.detail = (detail ?? "").slice(0, 200);
   agent.area = stateToArea(agent.state);

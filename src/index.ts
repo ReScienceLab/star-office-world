@@ -38,6 +38,10 @@ export async function createStarOfficeWorld(
   // Load yesterday memo into state on startup
   state.yesterdayMemo = memoStore.getYesterday();
   state.todayMemos = memoStore.getToday();
+  // Room membership is rebuilt from the persisted `state.agents` object by
+  // `rebuildRooms()` in `src/state.ts`. Fresh process startup creates empty
+  // room buckets, and later stories that hydrate saved agents must route that
+  // data through the same rebuild helper before exposing state.
 
   const hooks = createOfficeHooks({
     state,
@@ -72,6 +76,10 @@ export async function createStarOfficeWorld(
       setupRoutes: async (fastify) => {
         // Register browser-facing routes
         registerUIRoutes(fastify, {
+          // UI routes currently receive a public snapshot, not the mutable
+          // backing object used by AWN hooks. Route handlers that need to
+          // change agent state must call the canonical helpers in `state.ts`
+          // instead of mutating the object returned here.
           getState: () => getPublicState(state),
           sse,
           memoStore,
