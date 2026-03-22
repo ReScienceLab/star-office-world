@@ -3,6 +3,7 @@
 ## Codebase Patterns
 
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
+- The current `node --test test/*.test.mjs` harness imports built files from `dist/`, so run `npm run build` before `npm test` whenever source changes affect test coverage.
 
 ---
 
@@ -13,4 +14,14 @@
   - Patterns discovered: UI routes are wired with `getState: () => getPublicState(state)`, so direct mutation inside route handlers does not use the same path as AWN hooks.
   - Gotchas encountered: `POST /set_state` currently mutates the public snapshot instead of calling `updateAgentState()`, which is why room rebuild behavior can diverge.
   - Useful context: Derived `rooms` data is recalculated by `rebuildRooms()` from `state.agents`; startup currently only hydrates memo data, not agent state.
+---
+
+## 2026-03-22 16:38:29 UTC - T-002
+- Routed compat `POST /set_state` through a new `setAgentState` dependency so UI route updates use `updateAgentState()` instead of mutating the public snapshot returned by `getState()`.
+- Added a focused `node:test` regression that exercises `/set_state` through Fastify and verifies the backing state's `rooms` buckets rebuild from the updated persisted agent area.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/index.ts`, `src/ui-routes.ts`, `test/ui-routes.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: UI routes can safely mutate canonical state by receiving explicit state helper callbacks from `src/index.ts` rather than direct access to the mutable backing object.
+  - Gotchas encountered: The current test command executes `.mjs` files against `dist/`, so building and testing in parallel can produce false failures against stale output.
+  - Useful context: `Fastify.inject()` is enough to cover compat route regressions without starting a long-running server, and the route only needs an existing agent to target the first office occupant.
 ---

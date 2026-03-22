@@ -9,7 +9,11 @@ import path from "node:path";
 import { createWorldServer } from "@resciencelab/agent-world-sdk";
 import type { WorldServer } from "@resciencelab/agent-world-sdk";
 import { loadConfig } from "./config.js";
-import { createInitialState, getPublicState } from "./state.js";
+import {
+  createInitialState,
+  getPublicState,
+  updateAgentState,
+} from "./state.js";
 import { createOfficeHooks } from "./hooks.js";
 import { SSEManager } from "./sse.js";
 import { MemoStore } from "./memo-store.js";
@@ -81,6 +85,8 @@ export async function createStarOfficeWorld(
           // change agent state must call the canonical helpers in `state.ts`
           // instead of mutating the object returned here.
           getState: () => getPublicState(state),
+          setAgentState: (agentId, newState, detail) =>
+            updateAgentState(state, agentId, newState, detail),
           sse,
           memoStore,
           adminPassword: config.adminPassword ?? "1234",

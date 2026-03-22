@@ -27,8 +27,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Compat POST /set_state now calls the same updateAgentState() flow used by AWN actions via a route dependency from src/index.ts, and a node:test regression verifies room membership rebuilds from the persisted state object after the route runs."
     },
     {
       "id": "T-003",
