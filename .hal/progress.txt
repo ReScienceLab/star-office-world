@@ -10,6 +10,7 @@
 - Hook actions should treat `MemoStore` persistence as best-effort after canonical in-memory updates so transient filesystem failures do not break runtime action success.
 - `MemoStore` startup and history loading should treat directory-creation failures and unreadable JSON as recoverable; when scanning prior days, skip corrupt files and keep looking for the most recent valid memo payload.
 - Manifest `state_fields` should be sourced from the same canonical field list as `getPublicState()` instead of being duplicated in hook metadata.
+- Browser-facing SSE regressions can use an `SSEManager` client double with a minimal `reply.raw` EventEmitter to assert exact streamed event payloads without booting Fastify.
 
 ---
 
@@ -90,4 +91,14 @@
   - Patterns discovered: Manifest metadata and public REST/SSE state should share a single canonical field list to avoid contract drift.
   - Gotchas encountered: The old hardcoded manifest listed `memos`, but the actual public state exposes `todayMemos` and `yesterdayMemo`, so metadata can silently go stale unless tests compare against a real snapshot.
   - Useful context: `hooks.onJoin()` is a good assertion point for manifest regressions because it returns both the manifest and the current public state in the same response.
+---
+
+## 2026-03-22 16:54:23 UTC - T-009
+- Added a focused `test/sse.test.mjs` regression that asserts `SSEManager` streams exact `agent_offline` and `agent_leave` SSE payloads to connected clients.
+- Extended `test/ui-routes.test.mjs` with a `/ui/state` contract test that compares the route payload keys against `createManifest(...).state_fields`.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `test/sse.test.mjs`, `test/ui-routes.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: `SSEManager` can be tested in isolation with a minimal `reply.raw.write()` collector and `close` emitter, which keeps browser-event regressions fast and deterministic.
+  - Gotchas encountered: Route contract checks should compare the actual JSON response from `/ui/state` against `createManifest(...).state_fields`, not just a cloned in-memory snapshot, so the browser-facing interface is what stays locked down.
+  - Useful context: The standard workflow remains `npm run build && npm test && npm run lint` because the tests import `dist/` artifacts.
 ---

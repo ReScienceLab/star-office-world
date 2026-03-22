@@ -129,8 +129,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added explicit SSEManager payload regressions for `agent_offline` and `agent_leave`, and extended the UI route suite to compare `/ui/state` keys against the manifest `state_fields` contract while keeping the existing hook-level offline/leave coverage green."
     },
     {
       "id": "T-010",
