@@ -4,6 +4,7 @@
 
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
 - The current `node --test test/*.test.mjs` harness imports built files from `dist/`, so run `npm run build` before `npm test` whenever source changes affect test coverage.
+- The AWN SDK calls the same `onLeave(agentId)` hook for explicit `world.leave` and idle eviction; distinguish the two inside `src/hooks.ts` by comparing the agent's `lastSeenAt` to `manifest.lifecycle.idleTimeoutMs`.
 
 ---
 
@@ -24,4 +25,14 @@
   - Patterns discovered: UI routes can safely mutate canonical state by receiving explicit state helper callbacks from `src/index.ts` rather than direct access to the mutable backing object.
   - Gotchas encountered: The current test command executes `.mjs` files against `dist/`, so building and testing in parallel can produce false failures against stale output.
   - Useful context: `Fastify.inject()` is enough to cover compat route regressions without starting a long-running server, and the route only needs an existing agent to target the first office occupant.
+---
+
+## 2026-03-22 16:41:36 UTC - T-003
+- Split lifecycle leave handling so stale agents are marked offline in place while recent agents are still removed on voluntary leave.
+- Added hook-level regressions covering idle eviction state preservation and voluntary leave removal.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/hooks.ts`, `test/hooks.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: The SDK does not pass an eviction reason into `onLeave()`, so lifecycle behavior has to infer idle eviction from the tracked agent timestamp and timeout.
+  - Gotchas encountered: `markOffline()` keeps the agent in `state.agents` but removes them from derived room occupancy because `rebuildRooms()` only includes `online` agents.
+  - Useful context: Hook regressions can exercise `createOfficeHooks()` directly with a minimal `broadcast()` spy and a temporary `MemoStore`, without booting Fastify.
 ---

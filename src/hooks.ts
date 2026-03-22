@@ -12,6 +12,7 @@ import {
   updateAgentState,
   heartbeat,
   removeAgent,
+  markOffline,
   addMemo,
   getPublicState,
   rebuildRooms,
@@ -121,6 +122,7 @@ export function createManifest(deps: HooksDeps): WorldManifest {
 export function createOfficeHooks(deps: HooksDeps): WorldHooks {
   const { state, sse, memoStore } = deps;
   const manifest = createManifest(deps);
+  const idleTimeoutMs = manifest.lifecycle?.idleTimeoutMs ?? 300_000;
 
   return {
     async onJoin(agentId, data) {
@@ -197,10 +199,19 @@ export function createOfficeHooks(deps: HooksDeps): WorldHooks {
     async onLeave(agentId) {
       const agent = state.agents[agentId];
       const alias = agent?.alias ?? agentId.slice(0, 8);
-      removeAgent(state, agentId);
+      const wasIdleEvicted =
+        !!agent && Date.now() - agent.lastSeenAt >= idleTimeoutMs;
+
+      if (wasIdleEvicted) {
+        markOffline(state, agentId);
+      } else {
+        removeAgent(state, agentId);
+      }
       sse.broadcast("agent_leave", { agentId });
       console.log(
-        `[office] ${alias} left (${Object.keys(state.agents).length} agents)`,
+        wasIdleEvicted
+          ? `[office] ${alias} marked offline (${Object.keys(state.agents).length} agents)`
+          : `[office] ${alias} left (${Object.keys(state.agents).length} agents)`,
       );
     },
 

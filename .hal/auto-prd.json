@@ -41,8 +41,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Lifecycle leave handling now infers idle eviction from the agent's stale `lastSeenAt` timestamp versus the configured idle timeout, marking evicted agents offline in-place while preserving voluntary leave removal, with focused hook regressions for both paths."
     },
     {
       "id": "T-004",
