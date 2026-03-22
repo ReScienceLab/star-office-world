@@ -301,6 +301,41 @@ function clearSSEEventSource(scene) {
   return sseSync;
 }
 
+function createOfficeEventSource() {
+  if (typeof EventSource !== 'function') return null;
+  return new EventSource('/ui/events');
+}
+
+function registerOfficeEventStream(scene, eventSource) {
+  if (!scene || !eventSource) return null;
+
+  const sseSync = getSSESyncState(scene);
+  sseSync.eventSource = eventSource;
+
+  eventSource.addEventListener('open', () => {
+    setSSEHealthy(scene, eventSource);
+  });
+
+  eventSource.addEventListener('error', () => {
+    setSSEDegraded(scene, eventSource);
+  });
+
+  return eventSource;
+}
+
+function connectOfficeEventStream(scene) {
+  const sseSync = getSSESyncState(scene);
+  if (sseSync.eventSource) return sseSync.eventSource;
+
+  const eventSource = createOfficeEventSource();
+  if (!eventSource) {
+    setSSEDegraded(scene, null);
+    return null;
+  }
+
+  return registerOfficeEventStream(scene, eventSource);
+}
+
 function isPlainObject(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -444,6 +479,7 @@ function preload() {
 function create() {
   game = this;
   getSSESyncState(this);
+  connectOfficeEventStream(this);
   this.add.image(640, 360, 'office_bg');
 
   // === 沙发（来自 LAYOUT）===

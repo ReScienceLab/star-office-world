@@ -69,8 +69,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added `connectOfficeEventStream(scene)` in `frontend/game.js` so scene creation opens a single `EventSource('/ui/events')`, stores it on the scene-owned `sseSync` state, and registers `open`/`error` handlers that toggle healthy versus degraded SSE mode through the shared helper path."
     },
     {
       "id": "T-006",
