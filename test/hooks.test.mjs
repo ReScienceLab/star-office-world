@@ -34,6 +34,13 @@ function createTestDeps() {
   };
 }
 
+function createActionData(action, extra = {}) {
+  return {
+    action,
+    ...extra,
+  };
+}
+
 test("idle eviction marks the agent offline and emits agent_offline", async (t) => {
   const { hooks, state, broadcasts, cleanup } = createTestDeps();
   t.after(cleanup);
@@ -65,4 +72,50 @@ test("voluntary leave removes the agent from state and emits agent_leave", async
   assert.deepEqual(state.rooms.writing, []);
   assert.deepEqual(state.rooms.error, []);
   assert.deepEqual(broadcasts, [{ event: "agent_leave", data: { agentId: "agent-1" } }]);
+});
+
+test("post_memo keeps in-memory state and returns ok when persistence fails", async (t) => {
+  const { hooks, state, broadcasts, cleanup } = createTestDeps();
+  t.after(cleanup);
+
+  addAgent(state, "agent-1", "Alpha", undefined, "idle", "Available");
+
+  const restoreWarn = console.warn;
+  console.warn = () => {};
+  t.after(() => {
+    console.warn = restoreWarn;
+  });
+
+  const failingDeps = createOfficeHooks({
+    state,
+    sse: {
+      broadcast(event, data) {
+        broadcasts.push({ event, data });
+      },
+    },
+    memoStore: {
+      append() {
+        throw new Error("disk full");
+      },
+      getToday() {
+        return [];
+      },
+      getYesterday() {
+        return null;
+      },
+    },
+    worldId: "test-world",
+    worldName: "Test World",
+    worldTheme: "test",
+  });
+
+  const result = await failingDeps.onAction(
+    "agent-1",
+    createActionData("post_memo", { content: "Shipped the patch" }),
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(state.todayMemos.length, 1);
+  assert.equal(state.todayMemos[0].content, "Shipped the patch");
+  assert.deepEqual(broadcasts, [{ event: "memo", data: state.todayMemos[0] }]);
 });

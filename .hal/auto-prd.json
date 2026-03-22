@@ -70,8 +70,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "The post_memo hook now treats MemoStore append failures as best-effort persistence: it preserves the in-memory memo entry, still broadcasts the memo event, and returns ok with a focused regression covering thrown append() failures."
     },
     {
       "id": "T-006",

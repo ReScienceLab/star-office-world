@@ -6,6 +6,7 @@
 - The current `node --test test/*.test.mjs` harness imports built files from `dist/`, so run `npm run build` before `npm test` whenever source changes affect test coverage.
 - The AWN SDK calls the same `onLeave(agentId)` hook for explicit `world.leave` and idle eviction; distinguish the two inside `src/hooks.ts` by comparing the agent's `lastSeenAt` to `manifest.lifecycle.idleTimeoutMs`.
 - Presence SSE names should mirror the inferred leave path in `src/hooks.ts`: idle eviction broadcasts `agent_offline`, while voluntary exits broadcast `agent_leave`.
+- Hook actions should treat `MemoStore` persistence as best-effort after canonical in-memory updates so transient filesystem failures do not break runtime action success.
 
 ---
 
@@ -46,4 +47,14 @@
   - Patterns discovered: `onLeave()` owns both the canonical presence mutation and the SSE event name, so tests should assert state changes and emitted event names together.
   - Gotchas encountered: Because the test harness imports `dist/`, event-regression assertions can appear stale unless the build is refreshed before running `npm test`.
   - Useful context: A simple `broadcasts` array spy in `test/hooks.test.mjs` is enough to verify lifecycle SSE behavior without spinning up the SSE manager or Fastify.
+---
+
+## 2026-03-22 16:45:49 UTC - T-005
+- Wrapped `post_memo` persistence in a best-effort `try/catch` so memo entries still land in `state.todayMemos`, emit the memo SSE event, and return `{ ok: true }` when disk writes fail.
+- Added a focused hook regression that injects a throwing `memoStore.append()` implementation and asserts in-memory memo retention plus a successful action result.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/hooks.ts`, `test/hooks.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: `post_memo` mutates canonical in-memory memo state before persistence, so persistence failures should be logged and tolerated instead of aborting the action.
+  - Gotchas encountered: Hook tests can inject a minimal `memoStore` double directly into `createOfficeHooks()`; it does not need a real filesystem-backed `MemoStore` instance for failure-path coverage.
+  - Useful context: The memo SSE broadcast should continue to use the same in-memory entry object even when persistence is skipped, so action success and client updates stay aligned.
 ---

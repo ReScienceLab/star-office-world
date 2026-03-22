@@ -175,7 +175,14 @@ export function createOfficeHooks(deps: HooksDeps): WorldHooks {
           const content = ((data["content"] as string) ?? "").slice(0, 2000);
           if (!content) return { ok: false };
           const entry = addMemo(state, agentId, agent.alias, content);
-          memoStore.append(entry);
+          try {
+            memoStore.append(entry);
+          } catch (error) {
+            console.warn(
+              `[office] Failed to persist memo for ${agent.alias || agentId.slice(0, 8)}:`,
+              error,
+            );
+          }
           sse.broadcast("memo", entry);
           console.log(
             `[office] Memo from ${agent.alias || agentId.slice(0, 8)}: ${content.slice(0, 50)}...`,
