@@ -8,3 +8,8 @@ state.json
 agents-state.json
 join-keys.json
 runtime-config.json
+
+# hal runtime config (standards and commands are committed)
+.hal/*
+!.hal/standards/
+!.hal/commands/
