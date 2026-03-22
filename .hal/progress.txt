@@ -11,6 +11,7 @@
 - `MemoStore` startup and history loading should treat directory-creation failures and unreadable JSON as recoverable; when scanning prior days, skip corrupt files and keep looking for the most recent valid memo payload.
 - Manifest `state_fields` should be sourced from the same canonical field list as `getPublicState()` instead of being duplicated in hook metadata.
 - Browser-facing SSE regressions can use an `SSEManager` client double with a minimal `reply.raw` EventEmitter to assert exact streamed event payloads without booting Fastify.
+- `frontend/game.js` currently centralizes sync entry points in `create()` and `update()`: `fetchStatus()` owns main-agent UI/status mutation, while `fetchAgents()` owns remote office-agent reconciliation, so SSE work should reuse those boundaries and gate polling at the update loop.
 
 ---
 
@@ -111,4 +112,14 @@
   - Patterns discovered: When tests import `dist/`, the standard `npm test` script itself should own the rebuild step instead of relying on contributors to remember a manual pre-build.
   - Gotchas encountered: Leaving the rebuild outside `npm test` makes new regressions appear flaky because stale compiled output can mask source changes.
   - Useful context: `npm test` now covers all 10 focused regressions end-to-end, and `npm run lint` remains the project's TypeScript no-emit check.
+---
+
+## 2026-03-22 17:01:44 UTC - T-001
+- Documented the current polling-based sync entry points directly in `frontend/game.js`, including the bootstrap callers in `create()`, the recurring callers in `update()`, and the `setState()` one-shot `fetchStatus()` refresh path.
+- Added inline ownership notes that separate main-agent status/detail updates in `fetchStatus()` from remote office-agent reconciliation in `fetchAgents()`, and marked the update loop as the future SSE fallback gate.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`
+- **Learnings for future iterations:**
+  - Patterns discovered: The current frontend sync flow is intentionally split between `fetchStatus()` for Star's own state UI and `fetchAgents()` for remote office occupants, which makes them the natural shared boundaries for upcoming SSE helpers.
+  - Gotchas encountered: `setState()` is an extra `fetchStatus()` caller outside the polling loop, so SSE migration cannot treat `update()` as the only status-refresh entry point.
+  - Useful context: `create()` does the initial bootstrap fetches before the periodic polling in `update()`, so SSE bootstrap should replace or short-circuit both startup calls together.
 ---

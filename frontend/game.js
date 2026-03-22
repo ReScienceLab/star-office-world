@@ -565,6 +565,11 @@ function create() {
   });
 
   loadMemo();
+  // Sync inventory for the SSE refactor:
+  // - `fetchStatus()` is called once here for scene bootstrap.
+  // - `fetchAgents()` is called once here for scene bootstrap.
+  // - The repeating polling callers live in `update()` below.
+  // - `setState()` also triggers a one-shot `fetchStatus()` after the compat POST completes.
   fetchStatus();
   fetchAgents();
 
@@ -619,6 +624,11 @@ function create() {
 }
 
 function update(time) {
+  // Polling ownership boundary:
+  // - `fetchStatus()` is the only polling path that mutates the main Star status/detail UI.
+  // - `fetchAgents()` is the only polling path that reconciles remote office-agent sprites.
+  // - A future SSE health flag should gate both calls here first, so fetch fallback can resume
+  //   from one place when `/ui/events` degrades or disconnects.
   if (time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
   if (time - lastAgentsFetch > AGENTS_FETCH_INTERVAL) { fetchAgents(); lastAgentsFetch = time; }
 
@@ -701,6 +711,11 @@ function normalizeState(s) {
 }
 
 function fetchStatus() {
+  // Main-agent ownership:
+  // - Handles the `/status` fetch path for the main Star agent only.
+  // - Owns state normalization, status text/detail updates, and main-scene animation toggles.
+  // - Current callers: scene bootstrap in `create()`, update-loop polling in `update()`,
+  //   and the one-shot compat refresh in `setState()`.
   fetch('/status')
     .then(response => response.json())
     .then(data => {
@@ -912,6 +927,12 @@ function showCatBubble() {
 }
 
 function fetchAgents() {
+  // Office-agent ownership:
+  // - Handles the `/agents` fetch path for non-main office occupants rendered via `renderAgent()`.
+  // - Owns slot assignment, remote-agent create/update reconciliation, and removal of missing agents.
+  // - Current callers: scene bootstrap in `create()` and update-loop polling in `update()`.
+  // - When SSE lands, stream handlers should reuse this lifecycle boundary while fallback re-enables
+  //   this fetch path only after the stream is unhealthy.
   fetch('/agents?t=' + Date.now(), { cache: 'no-store' })
     .then(response => response.json())
     .then(data => {
