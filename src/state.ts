@@ -21,6 +21,16 @@ const AVATARS = [
   "guest_role_6",
 ];
 
+export const PUBLIC_STATE_FIELDS: ReadonlyArray<keyof OfficeWorldState> = [
+  "agents",
+  "rooms",
+  "background",
+  "todayMemos",
+  "yesterdayMemo",
+  "officeConfig",
+  "lastUpdated",
+];
+
 export function randomAvatar(): string {
   return AVATARS[Math.floor(Math.random() * AVATARS.length)]!;
 }
@@ -93,6 +103,9 @@ export function updateAgentState(
 ): OfficeAgent | null {
   const agent = state.agents[agentId];
   if (!agent) return null;
+  // Canonical runtime mutation path for agent presence/state changes.
+  // AWN actions call this helper so agent fields and derived room membership
+  // stay in sync before any public snapshot is returned or broadcast.
   agent.state = normalizeState(newState);
   agent.detail = (detail ?? "").slice(0, 200);
   agent.area = stateToArea(agent.state);
@@ -157,5 +170,24 @@ export function addMemo(
  * Strips internal fields and returns a frozen snapshot.
  */
 export function getPublicState(state: OfficeWorldState): OfficeWorldState {
-  return { ...state };
+  return {
+    ...state,
+    agents: Object.fromEntries(
+      Object.entries(state.agents).map(([agentId, agent]) => [agentId, { ...agent }]),
+    ),
+    rooms: {
+      breakroom: [...state.rooms.breakroom],
+      writing: [...state.rooms.writing],
+      error: [...state.rooms.error],
+    },
+    background: { ...state.background },
+    todayMemos: state.todayMemos.map((entry) => ({ ...entry })),
+    yesterdayMemo: state.yesterdayMemo
+      ? {
+          ...state.yesterdayMemo,
+          entries: state.yesterdayMemo.entries.map((entry) => ({ ...entry })),
+        }
+      : null,
+    officeConfig: { ...state.officeConfig },
+  };
 }

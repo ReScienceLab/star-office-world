@@ -1,0 +1,114 @@
+# Ralph Progress Log
+
+## Codebase Patterns
+
+- UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
+- `getPublicState()` must deep-copy nested collections (`agents`, `rooms`, memos, config/background objects) before returning snapshots; shallow copies expose live state to REST/SSE callers.
+- The test suite imports built files from `dist/`; keep `npm test` responsible for rebuilding first so contributors and CI always run tests against fresh output.
+- The AWN SDK calls the same `onLeave(agentId)` hook for explicit `world.leave` and idle eviction; distinguish the two inside `src/hooks.ts` by comparing the agent's `lastSeenAt` to `manifest.lifecycle.idleTimeoutMs`.
+- Presence SSE names should mirror the inferred leave path in `src/hooks.ts`: idle eviction broadcasts `agent_offline`, while voluntary exits broadcast `agent_leave`.
+- Hook actions should treat `MemoStore` persistence as best-effort after canonical in-memory updates so transient filesystem failures do not break runtime action success.
+- `MemoStore` startup and history loading should treat directory-creation failures and unreadable JSON as recoverable; when scanning prior days, skip corrupt files and keep looking for the most recent valid memo payload.
+- Manifest `state_fields` should be sourced from the same canonical field list as `getPublicState()` instead of being duplicated in hook metadata.
+- Browser-facing SSE regressions can use an `SSEManager` client double with a minimal `reply.raw` EventEmitter to assert exact streamed event payloads without booting Fastify.
+
+---
+
+## 2026-03-22 16:34:46 UTC - T-001
+- Documented the current canonical runtime mutation path in `src/state.ts`, the compat `/set_state` route divergence in `src/ui-routes.ts`, and the room rebuild dependency point in `src/index.ts`.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/index.ts`, `src/state.ts`, `src/ui-routes.ts`
+- **Learnings for future iterations:**
+  - Patterns discovered: UI routes are wired with `getState: () => getPublicState(state)`, so direct mutation inside route handlers does not use the same path as AWN hooks.
+  - Gotchas encountered: `POST /set_state` currently mutates the public snapshot instead of calling `updateAgentState()`, which is why room rebuild behavior can diverge.
+  - Useful context: Derived `rooms` data is recalculated by `rebuildRooms()` from `state.agents`; startup currently only hydrates memo data, not agent state.
+---
+
+## 2026-03-22 16:38:29 UTC - T-002
+- Routed compat `POST /set_state` through a new `setAgentState` dependency so UI route updates use `updateAgentState()` instead of mutating the public snapshot returned by `getState()`.
+- Added a focused `node:test` regression that exercises `/set_state` through Fastify and verifies the backing state's `rooms` buckets rebuild from the updated persisted agent area.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/index.ts`, `src/ui-routes.ts`, `test/ui-routes.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: UI routes can safely mutate canonical state by receiving explicit state helper callbacks from `src/index.ts` rather than direct access to the mutable backing object.
+  - Gotchas encountered: The current test command executes `.mjs` files against `dist/`, so building and testing in parallel can produce false failures against stale output.
+  - Useful context: `Fastify.inject()` is enough to cover compat route regressions without starting a long-running server, and the route only needs an existing agent to target the first office occupant.
+---
+
+## 2026-03-22 16:41:36 UTC - T-003
+- Split lifecycle leave handling so stale agents are marked offline in place while recent agents are still removed on voluntary leave.
+- Added hook-level regressions covering idle eviction state preservation and voluntary leave removal.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/hooks.ts`, `test/hooks.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: The SDK does not pass an eviction reason into `onLeave()`, so lifecycle behavior has to infer idle eviction from the tracked agent timestamp and timeout.
+  - Gotchas encountered: `markOffline()` keeps the agent in `state.agents` but removes them from derived room occupancy because `rebuildRooms()` only includes `online` agents.
+  - Useful context: Hook regressions can exercise `createOfficeHooks()` directly with a minimal `broadcast()` spy and a temporary `MemoStore`, without booting Fastify.
+---
+
+## 2026-03-22 16:44:02 UTC - T-004
+- Aligned lifecycle presence broadcasts so inferred idle eviction emits `agent_offline` and voluntary leave continues to emit `agent_leave`.
+- Extended the hook regression coverage to assert the exact SSE event names emitted for both leave paths.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/hooks.ts`, `test/hooks.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: `onLeave()` owns both the canonical presence mutation and the SSE event name, so tests should assert state changes and emitted event names together.
+  - Gotchas encountered: Because the test harness imports `dist/`, event-regression assertions can appear stale unless the build is refreshed before running `npm test`.
+  - Useful context: A simple `broadcasts` array spy in `test/hooks.test.mjs` is enough to verify lifecycle SSE behavior without spinning up the SSE manager or Fastify.
+---
+
+## 2026-03-22 16:45:49 UTC - T-005
+- Wrapped `post_memo` persistence in a best-effort `try/catch` so memo entries still land in `state.todayMemos`, emit the memo SSE event, and return `{ ok: true }` when disk writes fail.
+- Added a focused hook regression that injects a throwing `memoStore.append()` implementation and asserts in-memory memo retention plus a successful action result.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/hooks.ts`, `test/hooks.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: `post_memo` mutates canonical in-memory memo state before persistence, so persistence failures should be logged and tolerated instead of aborting the action.
+  - Gotchas encountered: Hook tests can inject a minimal `memoStore` double directly into `createOfficeHooks()`; it does not need a real filesystem-backed `MemoStore` instance for failure-path coverage.
+  - Useful context: The memo SSE broadcast should continue to use the same in-memory entry object even when persistence is skipped, so action success and client updates stay aligned.
+---
+
+## 2026-03-22 16:48:01 UTC - T-006
+- Hardened `MemoStore` so constructor directory creation is best-effort, and historical reads skip corrupt JSON files instead of stopping at the newest bad memo file.
+- Added focused `node:test` regressions for startup directory-creation failure and mixed valid/corrupt memo history loading.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/memo-store.ts`, `test/memo-store.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: `MemoStore` readers should treat unreadable or non-array JSON as invalid payloads and continue scanning older daily files rather than collapsing to `null` on the first bad candidate.
+  - Gotchas encountered: The fallback scan in `getYesterday()` must iterate over all candidate files; only checking the newest prior file lets a single corrupt memo block older valid history.
+  - Useful context: The test harness can simulate `mkdirSync` failure by temporarily overriding `fs.mkdirSync` in `test/memo-store.test.mjs`, which avoids needing OS-specific permission setup.
+---
+
+## 2026-03-22 16:49:58 UTC - T-007
+- Updated `getPublicState()` to return deep-copied nested agents, room arrays, background data, memo entries, yesterday memo entries, and office config instead of exposing shallow references.
+- Added a focused `node:test` regression that mutates nested data on a returned public snapshot and verifies the backing state remains unchanged.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/state.ts`, `test/state.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Public state accessors are safe only when every nested object and array in the returned payload is cloned, not just the top-level state object.
+  - Gotchas encountered: `getPublicState()` feeds both REST routes and hook responses, so shallow-copy regressions can leak through multiple interfaces at once.
+  - Useful context: A focused state regression can assert snapshot isolation without Fastify by importing `dist/state.js` and mutating the returned object directly.
+---
+
+## 2026-03-22 16:52:26 UTC - T-008
+- Replaced the hardcoded manifest `state_fields` array with a canonical `PUBLIC_STATE_FIELDS` export from `src/state.ts` so the manifest matches the public state payload keys exactly, including `todayMemos` and `yesterdayMemo`.
+- Added a focused hook regression that compares the manifest returned from `onJoin()` with `Object.keys(getPublicState(state))` and verifies the join payload uses the same public snapshot contract.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/hooks.ts`, `src/state.ts`, `test/hooks.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Manifest metadata and public REST/SSE state should share a single canonical field list to avoid contract drift.
+  - Gotchas encountered: The old hardcoded manifest listed `memos`, but the actual public state exposes `todayMemos` and `yesterdayMemo`, so metadata can silently go stale unless tests compare against a real snapshot.
+  - Useful context: `hooks.onJoin()` is a good assertion point for manifest regressions because it returns both the manifest and the current public state in the same response.
+---
+
+## 2026-03-22 16:54:23 UTC - T-009
+- Added a focused `test/sse.test.mjs` regression that asserts `SSEManager` streams exact `agent_offline` and `agent_leave` SSE payloads to connected clients.
+- Extended `test/ui-routes.test.mjs` with a `/ui/state` contract test that compares the route payload keys against `createManifest(...).state_fields`.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `test/sse.test.mjs`, `test/ui-routes.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: `SSEManager` can be tested in isolation with a minimal `reply.raw.write()` collector and `close` emitter, which keeps browser-event regressions fast and deterministic.
+  - Gotchas encountered: Route contract checks should compare the actual JSON response from `/ui/state` against `createManifest(...).state_fields`, not just a cloned in-memory snapshot, so the browser-facing interface is what stays locked down.
+  - Useful context: The standard workflow remains `npm run build && npm test && npm run lint` because the tests import `dist/` artifacts.
+---
+
+## 2026-03-22 16:58:41 UTC - T-010
+- Updated the standard `npm test` script to rebuild `dist/` before running `node --test`, so the new state, hooks, SSE, memo-store, and UI route regressions run through the default project workflow without extra manual steps.
+- Aligned the README quick start so testing points at `npm test`, while start instructions still build before `npm start`.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `README.md`, `package.json`
+- **Learnings for future iterations:**
+  - Patterns discovered: When tests import `dist/`, the standard `npm test` script itself should own the rebuild step instead of relying on contributors to remember a manual pre-build.
+  - Gotchas encountered: Leaving the rebuild outside `npm test` makes new regressions appear flaky because stale compiled output can mask source changes.
+  - Useful context: `npm test` now covers all 10 focused regressions end-to-end, and `npm run lint` remains the project's TypeScript no-emit check.
+---

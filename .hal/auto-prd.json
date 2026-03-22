@@ -1,0 +1,150 @@
+{
+  "project": "fix-scaffold-bugs-and-core-module-tests",
+  "branchName": "compound/fix-scaffold-bugs-and-core-tests",
+  "description": "Fix scaffold correctness bugs across state mutation, lifecycle hooks, SSE behavior, memo persistence, manifest metadata, and public state safety, and add focused regression coverage for the affected core modules.",
+  "userStories": [
+    {
+      "id": "T-001",
+      "title": "Inspect canonical state mutation and rebuild path",
+      "description": "As a developer, I need to identify the canonical state mutation flow and room rebuild dependency points so the scaffold fix can update state in the correct place without broad refactoring.",
+      "acceptanceCriteria": [
+        "The code path used by POST /set_state and the canonical runtime mutation path are identified in repository notes or implementation comments.",
+        "The code path used to rebuild rooms from persisted agent state is identified.",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Documented the current canonical runtime mutation path in src/state.ts (`updateAgentState`), the compat `/set_state` divergence in src/ui-routes.ts, and the room rebuild dependency in src/index.ts."
+    },
+    {
+      "id": "T-002",
+      "title": "Route set_state through canonical state mutation",
+      "description": "As a developer, I need POST /set_state to use the canonical mutation path so persisted agent state and rebuilt room state remain consistent.",
+      "acceptanceCriteria": [
+        "POST /set_state updates agent state through the same mutation flow used by normal runtime updates.",
+        "Rebuilding a room after a state update reflects the latest persisted area value.",
+        "A focused regression test covers stale room rebuilding after POST /set_state.",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Compat POST /set_state now calls the same updateAgentState() flow used by AWN actions via a route dependency from src/index.ts, and a node:test regression verifies room membership rebuilds from the persisted state object after the route runs."
+    },
+    {
+      "id": "T-003",
+      "title": "Separate idle eviction from voluntary leave in lifecycle logic",
+      "description": "As a developer, I need lifecycle handling to distinguish idle eviction from voluntary leave so presence state and downstream events match actual agent behavior.",
+      "acceptanceCriteria": [
+        "Idle eviction leaves the agent present in state with online set to false.",
+        "Voluntary leave removes the agent from state.",
+        "Lifecycle logic differentiates the two paths without changing unrelated hook behavior.",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Lifecycle leave handling now infers idle eviction from the agent's stale `lastSeenAt` timestamp versus the configured idle timeout, marking evicted agents offline in-place while preserving voluntary leave removal, with focused hook regressions for both paths."
+    },
+    {
+      "id": "T-004",
+      "title": "Align emitted presence events with eviction and leave behavior",
+      "description": "As a developer, I need SSE-facing event emission to broadcast offline and leave events correctly so clients can react to idle eviction and voluntary leave distinctly.",
+      "acceptanceCriteria": [
+        "Idle eviction emits agent_offline instead of agent_leave.",
+        "Voluntary leave still emits agent_leave.",
+        "A focused test asserts the emitted event names for both paths.",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Lifecycle leave handling now emits `agent_offline` for inferred idle eviction and `agent_leave` for voluntary exit, with focused hook regressions asserting the exact SSE event names for both paths."
+    },
+    {
+      "id": "T-005",
+      "title": "Make post_memo resilient to persistence write failures",
+      "description": "As a developer, I need post_memo to preserve in-memory success when persistence fails so action handlers remain available during filesystem issues.",
+      "acceptanceCriteria": [
+        "post_memo updates in-memory memo state even when filesystem persistence fails.",
+        "A filesystem write failure during post_memo does not throw from the action handler.",
+        "post_memo returns an ok result when in-memory state was updated successfully.",
+        "A focused test covers the persistence failure scenario.",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "The post_memo hook now treats MemoStore append failures as best-effort persistence: it preserves the in-memory memo entry, still broadcasts the memo event, and returns ok with a focused regression covering thrown append() failures."
+    },
+    {
+      "id": "T-006",
+      "title": "Harden MemoStore startup and corrupt file loading",
+      "description": "As a developer, I need MemoStore initialization to handle directory creation failures and corrupt memo files safely so startup and reload paths remain usable.",
+      "acceptanceCriteria": [
+        "MemoStore construction does not throw when memo directory creation fails.",
+        "Corrupt memo files are skipped or handled without crashing memo loading.",
+        "Valid memo files remain readable when corrupt files are present.",
+        "Focused tests cover directory creation failure and corrupt memo file handling.",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "MemoStore construction now treats memo directory creation as best-effort, and historical memo loading skips corrupt JSON files while still returning the most recent valid day, with focused regressions covering both startup and mixed valid/corrupt history."
+    },
+    {
+      "id": "T-007",
+      "title": "Return deep-copied data from public state accessors",
+      "description": "As a developer, I need getPublicState to return deep copies so callers cannot mutate internal state through shared nested object references.",
+      "acceptanceCriteria": [
+        "getPublicState returns new nested object or array references instead of exposing source references.",
+        "Mutating a nested field on returned public state does not change internal source state.",
+        "A focused regression test covers nested mutation safety.",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "getPublicState() now clones nested agent, room, memo, background, yesterday memo, and office config data so REST/SSE consumers cannot mutate internal state through returned snapshot references, with a focused regression proving nested mutations stay isolated."
+    },
+    {
+      "id": "T-008",
+      "title": "Align manifest state_fields with public state contract",
+      "description": "As a developer, I need manifest metadata to match the public state payload exactly so consumers and tooling can rely on the documented state contract.",
+      "acceptanceCriteria": [
+        "Manifest state_fields exactly match the keys exposed by the public state payload.",
+        "Manifest state_fields include todayMemos and yesterdayMemo when those keys are present in public state.",
+        "No manifest state_fields entry remains for a key that is absent from public state.",
+        "A focused test validates manifest field accuracy.",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Manifest `state_fields` now comes from the canonical `PUBLIC_STATE_FIELDS` list in `src/state.ts`, replacing the stale hardcoded `memos` entry with the actual public keys (`todayMemos` and `yesterdayMemo`) and adding a hook regression that compares the join manifest against `Object.keys(getPublicState(state))`."
+    },
+    {
+      "id": "T-009",
+      "title": "Add focused regression coverage for hooks, SSE, and routes",
+      "description": "As a developer, I need targeted integration tests across hooks, SSE, and UI routes so the offline, leave, manifest, and route-level memo behaviors stay locked down.",
+      "acceptanceCriteria": [
+        "Hooks tests verify idle eviction marks an agent offline without removing it.",
+        "Hooks tests verify voluntary leave removes the agent and emits the leave event.",
+        "SSE or route-level tests verify agent_offline for idle eviction and agent_leave for voluntary leave.",
+        "UI route tests verify manifest state_fields match the public state payload contract.",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "Added explicit SSEManager payload regressions for `agent_offline` and `agent_leave`, and extended the UI route suite to compare `/ui/state` keys against the manifest `state_fields` contract while keeping the existing hook-level offline/leave coverage green."
+    },
+    {
+      "id": "T-010",
+      "title": "Run the standard test workflow with new core module coverage",
+      "description": "As a developer, I need the standard project test command to run the new state, memo-store, hooks, SSE, and route regressions so the fixes are verified under the same workflow used by CI and contributors.",
+      "acceptanceCriteria": [
+        "The project test command runs the new or updated state, hooks, SSE, memo-store, and UI route tests without extra manual steps.",
+        "All new and affected tests pass under the standard test command.",
+        "Any required test setup changes are committed in the repository.",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Updated the standard `npm test` workflow to run `npm run build` before `node --test`, so the state, hooks, SSE, memo-store, and UI route regressions execute against fresh `dist/` output without extra manual steps; verified with `npm test` and `npm run lint`."
+    }
+  ]
+}

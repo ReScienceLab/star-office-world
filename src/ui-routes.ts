@@ -7,11 +7,17 @@
 
 import type { FastifyInstance } from "fastify";
 import type { OfficeWorldState } from "./types.js";
+import type { OfficeAgent } from "./types.js";
 import type { SSEManager } from "./sse.js";
 import type { MemoStore } from "./memo-store.js";
 
 export interface UIRouteDeps {
   getState: () => OfficeWorldState;
+  setAgentState: (
+    agentId: string,
+    newState: string,
+    detail?: string,
+  ) => OfficeAgent | null;
   sse: SSEManager;
   memoStore: MemoStore;
   adminPassword: string;
@@ -21,7 +27,7 @@ export function registerUIRoutes(
   fastify: FastifyInstance,
   deps: UIRouteDeps,
 ): void {
-  const { getState, sse, memoStore, adminPassword } = deps;
+  const { getState, setAgentState, sse, memoStore, adminPassword } = deps;
 
   // ── SSE Stream ───────────────────────────────────────────────────────────
 
@@ -139,16 +145,15 @@ export function registerUIRoutes(
     if (!target) {
       return { status: "error", msg: "No agents in office" };
     }
-    if (body["state"] && typeof body["state"] === "string") {
-      const { normalizeState, stateToArea } = await import("./types.js");
-      target.state = normalizeState(body["state"] as string);
-      target.area = stateToArea(target.state);
+    const nextState =
+      typeof body["state"] === "string" ? body["state"] : target.state;
+    const nextDetail =
+      typeof body["detail"] === "string" ? body["detail"] : target.detail;
+    const updated = setAgentState(target.agentId, nextState, nextDetail);
+    if (!updated) {
+      return { status: "error", msg: "Agent not found" };
     }
-    if (body["detail"] && typeof body["detail"] === "string") {
-      target.detail = (body["detail"] as string).slice(0, 200);
-    }
-    target.lastSeenAt = Date.now();
-    sse.broadcast("agent_update", target);
+    sse.broadcast("agent_update", updated);
     return { status: "ok" };
   });
 

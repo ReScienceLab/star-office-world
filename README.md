@@ -33,10 +33,11 @@ The pixel-art Phaser.js frontend is served by the same server and receives real-
 # Install dependencies
 npm install
 
-# Build
-npm run build
+# Test
+npm test
 
 # Start
+npm run build
 npm start
 ```
 

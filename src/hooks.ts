@@ -12,8 +12,10 @@ import {
   updateAgentState,
   heartbeat,
   removeAgent,
+  markOffline,
   addMemo,
   getPublicState,
+  PUBLIC_STATE_FIELDS,
   rebuildRooms,
   randomAvatar,
 } from "./state.js";
@@ -107,20 +109,14 @@ export function createManifest(deps: HooksDeps): WorldManifest {
       evictionPolicy: "idle",
       idleTimeoutMs: 300_000,
     },
-    state_fields: [
-      "agents",
-      "rooms",
-      "memos",
-      "background",
-      "officeConfig",
-      "lastUpdated",
-    ],
+    state_fields: [...PUBLIC_STATE_FIELDS],
   };
 }
 
 export function createOfficeHooks(deps: HooksDeps): WorldHooks {
   const { state, sse, memoStore } = deps;
   const manifest = createManifest(deps);
+  const idleTimeoutMs = manifest.lifecycle?.idleTimeoutMs ?? 300_000;
 
   return {
     async onJoin(agentId, data) {
@@ -173,7 +169,14 @@ export function createOfficeHooks(deps: HooksDeps): WorldHooks {
           const content = ((data["content"] as string) ?? "").slice(0, 2000);
           if (!content) return { ok: false };
           const entry = addMemo(state, agentId, agent.alias, content);
-          memoStore.append(entry);
+          try {
+            memoStore.append(entry);
+          } catch (error) {
+            console.warn(
+              `[office] Failed to persist memo for ${agent.alias || agentId.slice(0, 8)}:`,
+              error,
+            );
+          }
           sse.broadcast("memo", entry);
           console.log(
             `[office] Memo from ${agent.alias || agentId.slice(0, 8)}: ${content.slice(0, 50)}...`,
@@ -197,10 +200,20 @@ export function createOfficeHooks(deps: HooksDeps): WorldHooks {
     async onLeave(agentId) {
       const agent = state.agents[agentId];
       const alias = agent?.alias ?? agentId.slice(0, 8);
-      removeAgent(state, agentId);
-      sse.broadcast("agent_leave", { agentId });
+      const wasIdleEvicted =
+        !!agent && Date.now() - agent.lastSeenAt >= idleTimeoutMs;
+
+      if (wasIdleEvicted) {
+        markOffline(state, agentId);
+        sse.broadcast("agent_offline", { agentId });
+      } else {
+        removeAgent(state, agentId);
+        sse.broadcast("agent_leave", { agentId });
+      }
       console.log(
-        `[office] ${alias} left (${Object.keys(state.agents).length} agents)`,
+        wasIdleEvicted
+          ? `[office] ${alias} marked offline (${Object.keys(state.agents).length} agents)`
+          : `[office] ${alias} left (${Object.keys(state.agents).length} agents)`,
       );
     },
 
