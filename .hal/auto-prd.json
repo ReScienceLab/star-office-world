@@ -84,8 +84,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Wired the `/ui/events` `state` listener in `frontend/game.js` so the initial public-state snapshot now selects the same main agent as `/status`, applies it through `applyMainAgentPayload()`, and reconciles the visible office agents through the shared office-agent lifecycle helpers before polling fallback runs."
     },
     {
       "id": "T-007",

@@ -320,6 +320,15 @@ function registerOfficeEventStream(scene, eventSource) {
     setSSEDegraded(scene, eventSource);
   });
 
+  eventSource.addEventListener('state', (event) => {
+    const parsed = parseSSEEventPayload('state', event && event.data);
+    if (!parsed) return;
+
+    const nextSyncState = getSSESyncState(scene);
+    nextSyncState.lastEventType = parsed.type;
+    applySceneStateEvent(scene, parsed.payload.raw);
+  });
+
   return eventSource;
 }
 
@@ -361,11 +370,10 @@ function normalizeSSEEventType(eventType) {
 
 function parseSSEStatePayload(rawData) {
   const payload = safeParseSSEJSON(rawData);
-  if (!payload) return null;
+  if (!payload || !isPlainObject(payload.agents)) return null;
 
   return {
-    state: normalizeState(payload.state),
-    detail: typeof payload.detail === 'string' ? payload.detail : '...',
+    agents: payload.agents,
     raw: payload
   };
 }
@@ -406,6 +414,77 @@ function parseSSEEventPayload(eventType, rawData) {
 
   if (!payload) return null;
   return { type: normalizedType, payload };
+}
+
+function getOfficeAgentsFromStateSnapshot(snapshotAgents) {
+  if (!isPlainObject(snapshotAgents)) return [];
+
+  const officeAgents = [];
+  const areaSlots = { breakroom: 0, writing: 0, error: 0 };
+  for (const agent of Object.values(snapshotAgents)) {
+    if (!isPlainObject(agent) || typeof agent.agentId !== 'string' || !agent.agentId.trim()) {
+      continue;
+    }
+
+    const area = typeof agent.area === 'string' ? agent.area : 'breakroom';
+    const slotIndex = areaSlots[area] || 0;
+    areaSlots[area] = slotIndex + 1;
+
+    officeAgents.push({
+      agentId: agent.agentId,
+      name: typeof agent.alias === 'string' && agent.alias ? agent.alias : 'Agent',
+      isMain: false,
+      state: normalizeState(agent.state),
+      detail: typeof agent.detail === 'string' ? agent.detail : '',
+      updated_at: typeof agent.lastSeenAt === 'number' ? new Date(agent.lastSeenAt).toISOString() : undefined,
+      area,
+      authStatus: agent.online ? 'approved' : 'offline',
+      _slotIndex: slotIndex
+    });
+  }
+
+  return officeAgents;
+}
+
+function getMainAgentPayloadFromStateSnapshot(snapshotAgents) {
+  if (!isPlainObject(snapshotAgents)) return null;
+
+  const availableAgents = Object.values(snapshotAgents).filter(isPlainObject);
+  if (availableAgents.length === 0) return null;
+
+  const mainAgent = availableAgents.find(agent => agent.online) || availableAgents[0];
+  if (!mainAgent) return null;
+
+  return {
+    state: normalizeState(mainAgent.state),
+    detail: typeof mainAgent.detail === 'string' ? mainAgent.detail : '...'
+  };
+}
+
+function reconcileOfficeAgentsFromPayload(agentPayloads) {
+  if (!Array.isArray(agentPayloads)) return;
+
+  for (const agent of agentPayloads) {
+    applyOfficeAgentPayload(agent);
+  }
+
+  const currentIds = new Set(agentPayloads.map(agent => agent.agentId));
+  for (const id in agents) {
+    if (!currentIds.has(id)) {
+      removeOfficeAgent(id);
+    }
+  }
+}
+
+function applySceneStateEvent(scene, statePayload) {
+  if (!scene || !statePayload || !isPlainObject(statePayload.agents)) return;
+
+  const mainAgentPayload = getMainAgentPayloadFromStateSnapshot(statePayload.agents);
+  if (mainAgentPayload) {
+    applyMainAgentPayload(mainAgentPayload);
+  }
+
+  reconcileOfficeAgentsFromPayload(getOfficeAgentsFromStateSnapshot(statePayload.agents));
 }
 
 
@@ -1104,15 +1183,8 @@ function fetchAgents() {
         const area = agent.area || 'breakroom';
         agent._slotIndex = areaSlots[area] || 0;
         areaSlots[area] = (areaSlots[area] || 0) + 1;
-        applyOfficeAgentPayload(agent);
       }
-      // 移除不再存在的 agent
-      const currentIds = new Set(data.map(a => a.agentId));
-      for (let id in agents) {
-        if (!currentIds.has(id)) {
-          removeOfficeAgent(id);
-        }
-      }
+      reconcileOfficeAgentsFromPayload(data);
     })
     .catch(error => {
       console.error('拉取 agents 失败:', error);
