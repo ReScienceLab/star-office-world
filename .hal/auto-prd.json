@@ -99,8 +99,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "getPublicState() now clones nested agent, room, memo, background, yesterday memo, and office config data so REST/SSE consumers cannot mutate internal state through returned snapshot references, with a focused regression proving nested mutations stay isolated."
     },
     {
       "id": "T-008",

@@ -160,5 +160,24 @@ export function addMemo(
  * Strips internal fields and returns a frozen snapshot.
  */
 export function getPublicState(state: OfficeWorldState): OfficeWorldState {
-  return { ...state };
+  return {
+    ...state,
+    agents: Object.fromEntries(
+      Object.entries(state.agents).map(([agentId, agent]) => [agentId, { ...agent }]),
+    ),
+    rooms: {
+      breakroom: [...state.rooms.breakroom],
+      writing: [...state.rooms.writing],
+      error: [...state.rooms.error],
+    },
+    background: { ...state.background },
+    todayMemos: state.todayMemos.map((entry) => ({ ...entry })),
+    yesterdayMemo: state.yesterdayMemo
+      ? {
+          ...state.yesterdayMemo,
+          entries: state.yesterdayMemo.entries.map((entry) => ({ ...entry })),
+        }
+      : null,
+    officeConfig: { ...state.officeConfig },
+  };
 }

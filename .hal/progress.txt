@@ -3,6 +3,7 @@
 ## Codebase Patterns
 
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
+- `getPublicState()` must deep-copy nested collections (`agents`, `rooms`, memos, config/background objects) before returning snapshots; shallow copies expose live state to REST/SSE callers.
 - The current `node --test test/*.test.mjs` harness imports built files from `dist/`, so run `npm run build` before `npm test` whenever source changes affect test coverage.
 - The AWN SDK calls the same `onLeave(agentId)` hook for explicit `world.leave` and idle eviction; distinguish the two inside `src/hooks.ts` by comparing the agent's `lastSeenAt` to `manifest.lifecycle.idleTimeoutMs`.
 - Presence SSE names should mirror the inferred leave path in `src/hooks.ts`: idle eviction broadcasts `agent_offline`, while voluntary exits broadcast `agent_leave`.
@@ -68,4 +69,14 @@
   - Patterns discovered: `MemoStore` readers should treat unreadable or non-array JSON as invalid payloads and continue scanning older daily files rather than collapsing to `null` on the first bad candidate.
   - Gotchas encountered: The fallback scan in `getYesterday()` must iterate over all candidate files; only checking the newest prior file lets a single corrupt memo block older valid history.
   - Useful context: The test harness can simulate `mkdirSync` failure by temporarily overriding `fs.mkdirSync` in `test/memo-store.test.mjs`, which avoids needing OS-specific permission setup.
+---
+
+## 2026-03-22 16:49:58 UTC - T-007
+- Updated `getPublicState()` to return deep-copied nested agents, room arrays, background data, memo entries, yesterday memo entries, and office config instead of exposing shallow references.
+- Added a focused `node:test` regression that mutates nested data on a returned public snapshot and verifies the backing state remains unchanged.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/state.ts`, `test/state.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Public state accessors are safe only when every nested object and array in the returned payload is cloned, not just the top-level state object.
+  - Gotchas encountered: `getPublicState()` feeds both REST routes and hook responses, so shallow-copy regressions can leak through multiple interfaces at once.
+  - Useful context: A focused state regression can assert snapshot isolation without Fastify by importing `dist/state.js` and mutating the returned object directly.
 ---
