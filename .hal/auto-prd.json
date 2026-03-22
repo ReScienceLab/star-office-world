@@ -114,8 +114,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added `shouldUsePollingSync(scene)` in `frontend/game.js` so the recurring `update()` loop now skips `fetchStatus()` and `fetchAgents()` whenever `/ui/events` is healthy, while degraded SSE mode re-enables both polling paths through the shared `usePollingFallback` gate."
     },
     {
       "id": "T-009",

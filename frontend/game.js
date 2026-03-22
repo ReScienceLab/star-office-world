@@ -301,6 +301,11 @@ function clearSSEEventSource(scene) {
   return sseSync;
 }
 
+function shouldUsePollingSync(scene) {
+  const sseSync = getSSESyncState(scene);
+  return !!sseSync.usePollingFallback;
+}
+
 function createOfficeEventSource() {
   if (typeof EventSource !== 'function') return null;
   return new EventSource('/ui/events');
@@ -934,10 +939,11 @@ function update(time) {
   // Polling ownership boundary:
   // - `fetchStatus()` is the only polling path that mutates the main Star status/detail UI.
   // - `fetchAgents()` is the only polling path that reconciles remote office-agent sprites.
-  // - A future SSE health flag should gate both calls here first, so fetch fallback can resume
-  //   from one place when `/ui/events` degrades or disconnects.
-  if (time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
-  if (time - lastAgentsFetch > AGENTS_FETCH_INTERVAL) { fetchAgents(); lastAgentsFetch = time; }
+  // - Healthy `/ui/events` pushes should suppress these recurring fetches; degraded SSE flips
+  //   `usePollingFallback` back on so both polling paths resume from this single gate.
+  const shouldPollSync = shouldUsePollingSync(game);
+  if (shouldPollSync && time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
+  if (shouldPollSync && time - lastAgentsFetch > AGENTS_FETCH_INTERVAL) { fetchAgents(); lastAgentsFetch = time; }
 
   const effectiveStateForServer = pendingDesiredState || currentState;
   if (serverroom) {
