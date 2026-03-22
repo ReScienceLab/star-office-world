@@ -19,6 +19,7 @@
 - `frontend/game.js` should treat the `/ui/events` `state` event as a full `getPublicState()` snapshot: derive the main-agent status from the first online agent (or first available agent), then translate `state.agents` back through `reconcileOfficeAgentsFromPayload()` instead of assuming the `/status` or `/agents` response shapes.
 - `frontend/game.js` should route incremental `agent_join`/`agent_update`/`agent_leave`/`agent_offline` events through `applyOfficeAgentStreamEvent()` plus `assignOfficeAgentSlot()` so live SSE updates preserve existing area slots, reuse the shared office-agent lifecycle helpers, and avoid creating ghost offline agents.
 - `frontend/game.js` should gate recurring `/status` and `/agents` polling through `shouldUsePollingSync(scene)`, which reads `scene.sseSync.usePollingFallback` so healthy SSE suppresses duplicate fetches and degraded SSE restores both polling loops from one switch.
+- `frontend/game.js` should treat `/ui/events` teardown as a first-class scene lifecycle concern: bind one shutdown/destroy cleanup path that removes stored EventSource listeners, closes the active stream, clears reconnect timers, and only creates a fresh EventSource after `readyState === CLOSED`.
 
 ---
 
@@ -192,5 +193,14 @@
 - **Learnings for future iterations:**
   - Patterns discovered: The update loop is now the single recurring polling gate, so healthy `/ui/events` should suppress duplicate fetch sync by flipping `scene.sseSync.usePollingFallback` instead of adding extra guards inside `fetchStatus()` or `fetchAgents()`.
   - Gotchas encountered: This story intentionally only gates recurring polling; scene bootstrap fetches in `create()` and compat refreshes from `setState()` still run until a later cleanup story changes them.
+  - Useful context: Browser verification was skipped because this workspace still has no browser verification skill installed, so this frontend iteration relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+---
+## 2026-03-22 17:36:20 UTC - T-009
+- Added explicit `/ui/events` teardown and reconnect management in `frontend/game.js`, including stored EventSource listener references, closed-stream reconnect scheduling, and cleanup on scene `shutdown`/`destroy`.
+- Preserved automatic recovery behavior so stream `error` events immediately restore polling fallback, while a later `open` or a fresh EventSource connection disables fallback polling again through the existing healthy-state path.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`
+- **Learnings for future iterations:**
+  - Patterns discovered: Frontend SSE lifecycle code should keep listener functions on `scene.sseSync` so teardown can remove them before closing the EventSource and reconnecting cleanly.
+  - Gotchas encountered: Browser `EventSource` can emit `error` during transient reconnects without reaching `CLOSED`, so fallback should turn on immediately, but only fully replace the stream when `readyState === CLOSED`.
   - Useful context: Browser verification was skipped because this workspace still has no browser verification skill installed, so this frontend iteration relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
 ---

@@ -128,8 +128,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed the SSE failure/recovery path in `frontend/game.js` by tracking bound EventSource listeners on `scene.sseSync`, degrading immediately to polling on stream errors, scheduling a fresh `/ui/events` connection when the browser marks the stream closed, and closing/removing the active stream plus timers during scene `shutdown`/`destroy`. Existing `open` handling now clears fallback polling again after reconnects."
     }
   ]
 }

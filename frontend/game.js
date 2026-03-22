@@ -207,6 +207,7 @@ const SSE_MODE = {
   healthy: 'healthy',
   degraded: 'degraded'
 };
+const SSE_RECONNECT_DELAY = 3000;
 
 // agent 颜色配置
 const AGENT_COLORS = {
@@ -265,7 +266,10 @@ function createSSESyncState() {
     isHealthy: false,
     usePollingFallback: true,
     eventSource: null,
-    lastEventType: null
+    lastEventType: null,
+    eventHandlers: null,
+    reconnectTimer: null,
+    lifecycleBound: false
   };
 }
 
@@ -298,7 +302,76 @@ function setSSEDegraded(scene, eventSource) {
 function clearSSEEventSource(scene) {
   const sseSync = getSSESyncState(scene);
   sseSync.eventSource = null;
+  sseSync.eventHandlers = null;
   return sseSync;
+}
+
+function clearSSEReconnectTimer(scene) {
+  const sseSync = getSSESyncState(scene);
+  if (sseSync.reconnectTimer) {
+    clearTimeout(sseSync.reconnectTimer);
+    sseSync.reconnectTimer = null;
+  }
+  return sseSync;
+}
+
+function getClosedEventSourceState() {
+  return (typeof EventSource === 'function' && typeof EventSource.CLOSED === 'number')
+    ? EventSource.CLOSED
+    : 2;
+}
+
+function isClosedEventSource(eventSource) {
+  return !!eventSource && typeof eventSource.readyState === 'number' && eventSource.readyState === getClosedEventSourceState();
+}
+
+function closeOfficeEventStream(scene) {
+  const sseSync = getSSESyncState(scene);
+  clearSSEReconnectTimer(scene);
+
+  if (sseSync.eventSource && sseSync.eventHandlers) {
+    for (const [eventType, handler] of Object.entries(sseSync.eventHandlers)) {
+      sseSync.eventSource.removeEventListener(eventType, handler);
+    }
+  }
+
+  if (sseSync.eventSource && typeof sseSync.eventSource.close === 'function') {
+    sseSync.eventSource.close();
+  }
+
+  clearSSEEventSource(scene);
+  sseSync.mode = SSE_MODE.polling;
+  sseSync.isHealthy = false;
+  sseSync.usePollingFallback = true;
+  sseSync.lastEventType = null;
+  return sseSync;
+}
+
+function scheduleOfficeEventStreamReconnect(scene) {
+  const sseSync = getSSESyncState(scene);
+  if (sseSync.reconnectTimer) return sseSync.reconnectTimer;
+
+  sseSync.reconnectTimer = setTimeout(() => {
+    const nextSyncState = getSSESyncState(scene);
+    nextSyncState.reconnectTimer = null;
+    if (nextSyncState.eventSource) return;
+    connectOfficeEventStream(scene);
+  }, SSE_RECONNECT_DELAY);
+
+  return sseSync.reconnectTimer;
+}
+
+function bindOfficeEventStreamLifecycle(scene) {
+  const sseSync = getSSESyncState(scene);
+  if (sseSync.lifecycleBound || !scene || !scene.events) return;
+
+  const teardown = () => {
+    closeOfficeEventStream(scene);
+  };
+
+  scene.events.once('shutdown', teardown);
+  scene.events.once('destroy', teardown);
+  sseSync.lifecycleBound = true;
 }
 
 function shouldUsePollingSync(scene) {
@@ -315,34 +388,45 @@ function registerOfficeEventStream(scene, eventSource) {
   if (!scene || !eventSource) return null;
 
   const sseSync = getSSESyncState(scene);
+  clearSSEReconnectTimer(scene);
   sseSync.eventSource = eventSource;
 
-  eventSource.addEventListener('open', () => {
-    setSSEHealthy(scene, eventSource);
-  });
+  const handlers = {
+    open: () => {
+      setSSEHealthy(scene, eventSource);
+    },
+    error: () => {
+      setSSEDegraded(scene, eventSource);
 
-  eventSource.addEventListener('error', () => {
-    setSSEDegraded(scene, eventSource);
-  });
+      if (isClosedEventSource(eventSource)) {
+        closeOfficeEventStream(scene);
+        scheduleOfficeEventStreamReconnect(scene);
+      }
+    },
+    state: (event) => {
+      const parsed = parseSSEEventPayload('state', event && event.data);
+      if (!parsed) return;
 
-  eventSource.addEventListener('state', (event) => {
-    const parsed = parseSSEEventPayload('state', event && event.data);
-    if (!parsed) return;
-
-    const nextSyncState = getSSESyncState(scene);
-    nextSyncState.lastEventType = parsed.type;
-    applySceneStateEvent(scene, parsed.payload.raw);
-  });
+      const nextSyncState = getSSESyncState(scene);
+      nextSyncState.lastEventType = parsed.type;
+      applySceneStateEvent(scene, parsed.payload.raw);
+    }
+  };
 
   for (const eventType of ['agent_join', 'agent_update', 'agent_leave', 'agent_offline']) {
-    eventSource.addEventListener(eventType, (event) => {
+    handlers[eventType] = (event) => {
       const parsed = parseSSEEventPayload(eventType, event && event.data);
       if (!parsed) return;
 
       const nextSyncState = getSSESyncState(scene);
       nextSyncState.lastEventType = parsed.type;
       applyOfficeAgentStreamEvent(parsed.type, parsed.payload);
-    });
+    };
+  }
+
+  sseSync.eventHandlers = handlers;
+  for (const [eventType, handler] of Object.entries(handlers)) {
+    eventSource.addEventListener(eventType, handler);
   }
 
   return eventSource;
@@ -350,6 +434,7 @@ function registerOfficeEventStream(scene, eventSource) {
 
 function connectOfficeEventStream(scene) {
   const sseSync = getSSESyncState(scene);
+  bindOfficeEventStreamLifecycle(scene);
   if (sseSync.eventSource) return sseSync.eventSource;
 
   const eventSource = createOfficeEventSource();
