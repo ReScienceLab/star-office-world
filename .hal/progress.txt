@@ -9,6 +9,7 @@
 - Presence SSE names should mirror the inferred leave path in `src/hooks.ts`: idle eviction broadcasts `agent_offline`, while voluntary exits broadcast `agent_leave`.
 - Hook actions should treat `MemoStore` persistence as best-effort after canonical in-memory updates so transient filesystem failures do not break runtime action success.
 - `MemoStore` startup and history loading should treat directory-creation failures and unreadable JSON as recoverable; when scanning prior days, skip corrupt files and keep looking for the most recent valid memo payload.
+- Manifest `state_fields` should be sourced from the same canonical field list as `getPublicState()` instead of being duplicated in hook metadata.
 
 ---
 
@@ -79,4 +80,14 @@
   - Patterns discovered: Public state accessors are safe only when every nested object and array in the returned payload is cloned, not just the top-level state object.
   - Gotchas encountered: `getPublicState()` feeds both REST routes and hook responses, so shallow-copy regressions can leak through multiple interfaces at once.
   - Useful context: A focused state regression can assert snapshot isolation without Fastify by importing `dist/state.js` and mutating the returned object directly.
+---
+
+## 2026-03-22 16:52:26 UTC - T-008
+- Replaced the hardcoded manifest `state_fields` array with a canonical `PUBLIC_STATE_FIELDS` export from `src/state.ts` so the manifest matches the public state payload keys exactly, including `todayMemos` and `yesterdayMemo`.
+- Added a focused hook regression that compares the manifest returned from `onJoin()` with `Object.keys(getPublicState(state))` and verifies the join payload uses the same public snapshot contract.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/hooks.ts`, `src/state.ts`, `test/hooks.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Manifest metadata and public REST/SSE state should share a single canonical field list to avoid contract drift.
+  - Gotchas encountered: The old hardcoded manifest listed `memos`, but the actual public state exposes `todayMemos` and `yesterdayMemo`, so metadata can silently go stale unless tests compare against a real snapshot.
+  - Useful context: `hooks.onJoin()` is a good assertion point for manifest regressions because it returns both the manifest and the current public state in the same response.
 ---

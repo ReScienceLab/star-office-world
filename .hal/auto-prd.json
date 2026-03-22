@@ -114,8 +114,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Manifest `state_fields` now comes from the canonical `PUBLIC_STATE_FIELDS` list in `src/state.ts`, replacing the stale hardcoded `memos` entry with the actual public keys (`todayMemos` and `yesterdayMemo`) and adding a hook regression that compares the join manifest against `Object.keys(getPublicState(state))`."
     },
     {
       "id": "T-009",

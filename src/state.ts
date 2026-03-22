@@ -21,6 +21,16 @@ const AVATARS = [
   "guest_role_6",
 ];
 
+export const PUBLIC_STATE_FIELDS: ReadonlyArray<keyof OfficeWorldState> = [
+  "agents",
+  "rooms",
+  "background",
+  "todayMemos",
+  "yesterdayMemo",
+  "officeConfig",
+  "lastUpdated",
+];
+
 export function randomAvatar(): string {
   return AVATARS[Math.floor(Math.random() * AVATARS.length)]!;
 }

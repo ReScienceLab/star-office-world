@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createOfficeHooks } from "../dist/hooks.js";
-import { addAgent, createInitialState } from "../dist/state.js";
+import { addAgent, createInitialState, getPublicState } from "../dist/state.js";
 import { MemoStore } from "../dist/memo-store.js";
 
 function createTestDeps() {
@@ -118,4 +118,20 @@ test("post_memo keeps in-memory state and returns ok when persistence fails", as
   assert.equal(state.todayMemos.length, 1);
   assert.equal(state.todayMemos[0].content, "Shipped the patch");
   assert.deepEqual(broadcasts, [{ event: "memo", data: state.todayMemos[0] }]);
+});
+
+test("manifest state_fields match the public state payload contract", async (t) => {
+  const { hooks, state, cleanup } = createTestDeps();
+  t.after(cleanup);
+
+  addAgent(state, "agent-1", "Alpha", undefined, "writing", "Drafting");
+
+  const joinResult = await hooks.onJoin("agent-2", { alias: "Beta" });
+  const publicState = getPublicState(state);
+
+  assert.deepEqual(
+    joinResult.manifest.state_fields,
+    Object.keys(publicState),
+  );
+  assert.deepEqual(joinResult.state, publicState);
 });

@@ -15,6 +15,7 @@ import {
   markOffline,
   addMemo,
   getPublicState,
+  PUBLIC_STATE_FIELDS,
   rebuildRooms,
   randomAvatar,
 } from "./state.js";
@@ -108,14 +109,7 @@ export function createManifest(deps: HooksDeps): WorldManifest {
       evictionPolicy: "idle",
       idleTimeoutMs: 300_000,
     },
-    state_fields: [
-      "agents",
-      "rooms",
-      "memos",
-      "background",
-      "officeConfig",
-      "lastUpdated",
-    ],
+    state_fields: [...PUBLIC_STATE_FIELDS],
   };
 }
 
