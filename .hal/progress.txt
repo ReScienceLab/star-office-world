@@ -12,6 +12,7 @@
 - Manifest `state_fields` should be sourced from the same canonical field list as `getPublicState()` instead of being duplicated in hook metadata.
 - Browser-facing SSE regressions can use an `SSEManager` client double with a minimal `reply.raw` EventEmitter to assert exact streamed event payloads without booting Fastify.
 - `frontend/game.js` currently centralizes sync entry points in `create()` and `update()`: `fetchStatus()` owns main-agent UI/status mutation, while `fetchAgents()` owns remote office-agent reconciliation, so SSE work should reuse those boundaries and gate polling at the update loop.
+- `frontend/game.js` should route main-agent state/detail updates through `applyMainAgentPayload(payload)` so fetch bootstrap, compat refreshes, and upcoming SSE state events share the same animation/UI mutation path.
 
 ---
 
@@ -122,4 +123,14 @@
   - Patterns discovered: The current frontend sync flow is intentionally split between `fetchStatus()` for Star's own state UI and `fetchAgents()` for remote office occupants, which makes them the natural shared boundaries for upcoming SSE helpers.
   - Gotchas encountered: `setState()` is an extra `fetchStatus()` caller outside the polling loop, so SSE migration cannot treat `update()` as the only status-refresh entry point.
   - Useful context: `create()` does the initial bootstrap fetches before the periodic polling in `update()`, so SSE bootstrap should replace or short-circuit both startup calls together.
+---
+
+## 2026-03-22 17:21:17 UTC - T-002
+- Extracted `applyMainAgentPayload(payload)` in `frontend/game.js` so main-agent state normalization, status text refresh, and animation toggles now run through a plain-data helper instead of being embedded in the fetch callback.
+- Rewired `fetchStatus()` to stay as the `/status` transport wrapper and delegate all main-agent UI mutation to the shared helper, with inline notes pointing future SSE bootstrap work at the same path.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`
+- **Learnings for future iterations:**
+  - Patterns discovered: Main-agent frontend updates should flow through `applyMainAgentPayload(payload)` so polling, compat-triggered refreshes, and SSE state events stay behaviorally aligned.
+  - Gotchas encountered: The frontend quality gate does not cover `frontend/` via `tsc`, so a quick `node --check frontend/game.js` is useful alongside the standard build/test/lint workflow after JS-only refactors.
+  - Useful context: `applyMainAgentPayload()` already accepts missing payload fields defensively by normalizing absent state to `idle` and absent detail to `...`, which matches the existing `/status` fallback behavior.
 ---

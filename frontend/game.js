@@ -710,94 +710,97 @@ function normalizeState(s) {
   return s;
 }
 
+function applyMainAgentPayload(payload) {
+  const nextState = normalizeState(payload && payload.state);
+  const stateInfo = STATES[nextState] || STATES.idle;
+  const nextLine = '[' + stateInfo.name + '] ' + ((payload && payload.detail) || '...');
+  const changed = (pendingDesiredState === null) && (nextState !== currentState);
+
+  if (changed) {
+    typewriterTarget = nextLine;
+    typewriterText = '';
+    typewriterIndex = 0;
+
+    pendingDesiredState = null;
+    currentState = nextState;
+
+    if (nextState === 'idle') {
+      if (game.textures.exists('sofa_busy')) {
+        sofa.setTexture('sofa_busy');
+        sofa.anims.play('sofa_busy', true);
+      }
+      star.setVisible(false);
+      star.anims.stop();
+      if (window.starWorking) {
+        window.starWorking.setVisible(false);
+        window.starWorking.anims.stop();
+      }
+    } else if (nextState === 'error') {
+      sofa.anims.stop();
+      sofa.setTexture('sofa_idle');
+      star.setVisible(false);
+      star.anims.stop();
+      if (window.starWorking) {
+        window.starWorking.setVisible(false);
+        window.starWorking.anims.stop();
+      }
+    } else if (nextState === 'syncing') {
+      sofa.anims.stop();
+      sofa.setTexture('sofa_idle');
+      star.setVisible(false);
+      star.anims.stop();
+      if (window.starWorking) {
+        window.starWorking.setVisible(false);
+        window.starWorking.anims.stop();
+      }
+    } else {
+      sofa.anims.stop();
+      sofa.setTexture('sofa_idle');
+      star.setVisible(false);
+      star.anims.stop();
+      if (window.starWorking) {
+        window.starWorking.setVisible(true);
+        window.starWorking.anims.play('star_working', true);
+      }
+    }
+
+    if (serverroom) {
+      if (nextState === 'idle') {
+        serverroom.anims.stop();
+        serverroom.setFrame(0);
+      } else {
+        serverroom.anims.play('serverroom_on', true);
+      }
+    }
+
+    if (syncAnimSprite) {
+      if (nextState === 'syncing') {
+        if (!syncAnimSprite.anims.isPlaying || syncAnimSprite.anims.currentAnim?.key !== 'sync_anim') {
+          syncAnimSprite.anims.play('sync_anim', true);
+        }
+      } else {
+        if (syncAnimSprite.anims.isPlaying) syncAnimSprite.anims.stop();
+        syncAnimSprite.setFrame(0);
+      }
+    }
+  } else if (!typewriterTarget || typewriterTarget !== nextLine) {
+    typewriterTarget = nextLine;
+    typewriterText = '';
+    typewriterIndex = 0;
+  }
+}
+
 function fetchStatus() {
   // Main-agent ownership:
   // - Handles the `/status` fetch path for the main Star agent only.
   // - Owns state normalization, status text/detail updates, and main-scene animation toggles.
   // - Current callers: scene bootstrap in `create()`, update-loop polling in `update()`,
   //   and the one-shot compat refresh in `setState()`.
+  // - `applyMainAgentPayload()` is the shared plain-data path that SSE state bootstrap can reuse
+  //   without depending on fetch response objects.
   fetch('/status')
     .then(response => response.json())
-    .then(data => {
-      const nextState = normalizeState(data.state);
-      const stateInfo = STATES[nextState] || STATES.idle;
-      const changed = (pendingDesiredState === null) && (nextState !== currentState);
-      const nextLine = '[' + stateInfo.name + '] ' + (data.detail || '...');
-      if (changed) {
-        typewriterTarget = nextLine;
-        typewriterText = '';
-        typewriterIndex = 0;
-
-        pendingDesiredState = null;
-        currentState = nextState;
-
-        if (nextState === 'idle') {
-          if (game.textures.exists('sofa_busy')) {
-            sofa.setTexture('sofa_busy');
-            sofa.anims.play('sofa_busy', true);
-          }
-          star.setVisible(false);
-          star.anims.stop();
-          if (window.starWorking) {
-            window.starWorking.setVisible(false);
-            window.starWorking.anims.stop();
-          }
-        } else if (nextState === 'error') {
-          sofa.anims.stop();
-          sofa.setTexture('sofa_idle');
-          star.setVisible(false);
-          star.anims.stop();
-          if (window.starWorking) {
-            window.starWorking.setVisible(false);
-            window.starWorking.anims.stop();
-          }
-        } else if (nextState === 'syncing') {
-          sofa.anims.stop();
-          sofa.setTexture('sofa_idle');
-          star.setVisible(false);
-          star.anims.stop();
-          if (window.starWorking) {
-            window.starWorking.setVisible(false);
-            window.starWorking.anims.stop();
-          }
-        } else {
-          sofa.anims.stop();
-          sofa.setTexture('sofa_idle');
-          star.setVisible(false);
-          star.anims.stop();
-          if (window.starWorking) {
-            window.starWorking.setVisible(true);
-            window.starWorking.anims.play('star_working', true);
-          }
-        }
-
-        if (serverroom) {
-          if (nextState === 'idle') {
-            serverroom.anims.stop();
-            serverroom.setFrame(0);
-          } else {
-            serverroom.anims.play('serverroom_on', true);
-          }
-        }
-
-        if (syncAnimSprite) {
-          if (nextState === 'syncing') {
-            if (!syncAnimSprite.anims.isPlaying || syncAnimSprite.anims.currentAnim?.key !== 'sync_anim') {
-              syncAnimSprite.anims.play('sync_anim', true);
-            }
-          } else {
-            if (syncAnimSprite.anims.isPlaying) syncAnimSprite.anims.stop();
-            syncAnimSprite.setFrame(0);
-          }
-        }
-      } else {
-        if (!typewriterTarget || typewriterTarget !== nextLine) {
-          typewriterTarget = nextLine;
-          typewriterText = '';
-          typewriterIndex = 0;
-        }
-      }
-    })
+    .then(data => applyMainAgentPayload(data))
     .catch(error => {
       typewriterTarget = '连接失败，正在重试...';
       typewriterText = '';

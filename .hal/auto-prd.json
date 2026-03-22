@@ -27,8 +27,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Extracted `applyMainAgentPayload(payload)` in `frontend/game.js` so main-agent state/detail application now works from plain payload data. `fetchStatus()` is reduced to transport plus delegation, and inline notes mark the helper as the shared path for future SSE bootstrap/state events."
     },
     {
       "id": "T-003",
