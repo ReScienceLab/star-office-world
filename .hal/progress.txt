@@ -7,6 +7,7 @@
 - The AWN SDK calls the same `onLeave(agentId)` hook for explicit `world.leave` and idle eviction; distinguish the two inside `src/hooks.ts` by comparing the agent's `lastSeenAt` to `manifest.lifecycle.idleTimeoutMs`.
 - Presence SSE names should mirror the inferred leave path in `src/hooks.ts`: idle eviction broadcasts `agent_offline`, while voluntary exits broadcast `agent_leave`.
 - Hook actions should treat `MemoStore` persistence as best-effort after canonical in-memory updates so transient filesystem failures do not break runtime action success.
+- `MemoStore` startup and history loading should treat directory-creation failures and unreadable JSON as recoverable; when scanning prior days, skip corrupt files and keep looking for the most recent valid memo payload.
 
 ---
 
@@ -57,4 +58,14 @@
   - Patterns discovered: `post_memo` mutates canonical in-memory memo state before persistence, so persistence failures should be logged and tolerated instead of aborting the action.
   - Gotchas encountered: Hook tests can inject a minimal `memoStore` double directly into `createOfficeHooks()`; it does not need a real filesystem-backed `MemoStore` instance for failure-path coverage.
   - Useful context: The memo SSE broadcast should continue to use the same in-memory entry object even when persistence is skipped, so action success and client updates stay aligned.
+---
+
+## 2026-03-22 16:48:01 UTC - T-006
+- Hardened `MemoStore` so constructor directory creation is best-effort, and historical reads skip corrupt JSON files instead of stopping at the newest bad memo file.
+- Added focused `node:test` regressions for startup directory-creation failure and mixed valid/corrupt memo history loading.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/memo-store.ts`, `test/memo-store.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: `MemoStore` readers should treat unreadable or non-array JSON as invalid payloads and continue scanning older daily files rather than collapsing to `null` on the first bad candidate.
+  - Gotchas encountered: The fallback scan in `getYesterday()` must iterate over all candidate files; only checking the newest prior file lets a single corrupt memo block older valid history.
+  - Useful context: The test harness can simulate `mkdirSync` failure by temporarily overriding `fs.mkdirSync` in `test/memo-store.test.mjs`, which avoids needing OS-specific permission setup.
 ---

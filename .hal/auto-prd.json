@@ -85,8 +85,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "MemoStore construction now treats memo directory creation as best-effort, and historical memo loading skips corrupt JSON files while still returning the most recent valid day, with focused regressions covering both startup and mixed valid/corrupt history."
     },
     {
       "id": "T-007",

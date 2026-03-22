@@ -13,7 +13,11 @@ export class MemoStore {
 
   constructor(memoryDir: string) {
     this.dir = memoryDir;
-    fs.mkdirSync(this.dir, { recursive: true });
+    try {
+      fs.mkdirSync(this.dir, { recursive: true });
+    } catch (error) {
+      console.warn(`[office] Failed to create memo directory ${this.dir}:`, error);
+    }
   }
 
   private filePath(date: string): string {
@@ -60,8 +64,8 @@ export class MemoStore {
    */
   getYesterday(): DailyMemo | null {
     const yesterday = this.yesterdayStr();
-    const entries = this.loadDate(yesterday);
-    if (entries.length > 0) {
+    const entries = this.tryLoadDate(yesterday);
+    if (entries && entries.length > 0) {
       return { date: yesterday, entries };
     }
 
@@ -73,10 +77,10 @@ export class MemoStore {
         .filter((f) => f.endsWith(".json") && f < `${today}.json`)
         .sort()
         .reverse();
-      if (files.length > 0) {
-        const date = files[0]!.replace(".json", "");
-        const fallback = this.loadDate(date);
-        if (fallback.length > 0) return { date, entries: fallback };
+      for (const file of files) {
+        const date = file.replace(".json", "");
+        const fallback = this.tryLoadDate(date);
+        if (fallback && fallback.length > 0) return { date, entries: fallback };
       }
     } catch {
       // ignore
@@ -85,12 +89,16 @@ export class MemoStore {
   }
 
   private loadDate(date: string): MemoEntry[] {
+    return this.tryLoadDate(date) ?? [];
+  }
+
+  private tryLoadDate(date: string): MemoEntry[] | null {
     try {
       const raw = fs.readFileSync(this.filePath(date), "utf-8");
       const entries = JSON.parse(raw);
-      return Array.isArray(entries) ? entries : [];
+      return Array.isArray(entries) ? entries : null;
     } catch {
-      return [];
+      return null;
     }
   }
 }
