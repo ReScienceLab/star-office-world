@@ -202,6 +202,12 @@ const TYPEWRITER_DELAY = 50;
 let agents = {}; // agentId -> sprite/container
 let lastAgentsFetch = 0;
 const AGENTS_FETCH_INTERVAL = 2500;
+const SSE_MODE = {
+  polling: 'polling',
+  healthy: 'healthy',
+  degraded: 'degraded'
+};
+const SSE_RECONNECT_DELAY = 3000;
 
 // agent 颜色配置
 const AGENT_COLORS = {
@@ -253,6 +259,395 @@ const AREA_POSITIONS = {
     { x: 260, y: 260 }
   ]
 };
+
+function createSSESyncState() {
+  return {
+    mode: SSE_MODE.polling,
+    isHealthy: false,
+    usePollingFallback: true,
+    eventSource: null,
+    lastEventType: null,
+    eventHandlers: null,
+    reconnectTimer: null,
+    lifecycleBound: false
+  };
+}
+
+function getSSESyncState(scene) {
+  if (!scene) return createSSESyncState();
+  if (!scene.sseSync) {
+    scene.sseSync = createSSESyncState();
+  }
+  return scene.sseSync;
+}
+
+function setSSEHealthy(scene, eventSource) {
+  const sseSync = getSSESyncState(scene);
+  sseSync.mode = SSE_MODE.healthy;
+  sseSync.isHealthy = true;
+  sseSync.usePollingFallback = false;
+  sseSync.eventSource = eventSource || sseSync.eventSource || null;
+  return sseSync;
+}
+
+function setSSEDegraded(scene, eventSource) {
+  const sseSync = getSSESyncState(scene);
+  sseSync.mode = SSE_MODE.degraded;
+  sseSync.isHealthy = false;
+  sseSync.usePollingFallback = true;
+  sseSync.eventSource = eventSource || sseSync.eventSource || null;
+  return sseSync;
+}
+
+function clearSSEEventSource(scene) {
+  const sseSync = getSSESyncState(scene);
+  sseSync.eventSource = null;
+  sseSync.eventHandlers = null;
+  return sseSync;
+}
+
+function clearSSEReconnectTimer(scene) {
+  const sseSync = getSSESyncState(scene);
+  if (sseSync.reconnectTimer) {
+    clearTimeout(sseSync.reconnectTimer);
+    sseSync.reconnectTimer = null;
+  }
+  return sseSync;
+}
+
+function getClosedEventSourceState() {
+  return (typeof EventSource === 'function' && typeof EventSource.CLOSED === 'number')
+    ? EventSource.CLOSED
+    : 2;
+}
+
+function isClosedEventSource(eventSource) {
+  return !!eventSource && typeof eventSource.readyState === 'number' && eventSource.readyState === getClosedEventSourceState();
+}
+
+function closeOfficeEventStream(scene) {
+  const sseSync = getSSESyncState(scene);
+  clearSSEReconnectTimer(scene);
+
+  if (sseSync.eventSource && sseSync.eventHandlers) {
+    for (const [eventType, handler] of Object.entries(sseSync.eventHandlers)) {
+      sseSync.eventSource.removeEventListener(eventType, handler);
+    }
+  }
+
+  if (sseSync.eventSource && typeof sseSync.eventSource.close === 'function') {
+    sseSync.eventSource.close();
+  }
+
+  clearSSEEventSource(scene);
+  sseSync.mode = SSE_MODE.polling;
+  sseSync.isHealthy = false;
+  sseSync.usePollingFallback = true;
+  sseSync.lastEventType = null;
+  return sseSync;
+}
+
+function scheduleOfficeEventStreamReconnect(scene) {
+  const sseSync = getSSESyncState(scene);
+  if (sseSync.reconnectTimer) return sseSync.reconnectTimer;
+
+  sseSync.reconnectTimer = setTimeout(() => {
+    const nextSyncState = getSSESyncState(scene);
+    nextSyncState.reconnectTimer = null;
+    if (nextSyncState.eventSource) return;
+    connectOfficeEventStream(scene);
+  }, SSE_RECONNECT_DELAY);
+
+  return sseSync.reconnectTimer;
+}
+
+function bindOfficeEventStreamLifecycle(scene) {
+  const sseSync = getSSESyncState(scene);
+  if (sseSync.lifecycleBound || !scene || !scene.events) return;
+
+  const teardown = () => {
+    closeOfficeEventStream(scene);
+  };
+
+  scene.events.once('shutdown', teardown);
+  scene.events.once('destroy', teardown);
+  sseSync.lifecycleBound = true;
+}
+
+function shouldUsePollingSync(scene) {
+  const sseSync = getSSESyncState(scene);
+  return !!sseSync.usePollingFallback;
+}
+
+function createOfficeEventSource() {
+  if (typeof EventSource !== 'function') return null;
+  return new EventSource('/ui/events');
+}
+
+function registerOfficeEventStream(scene, eventSource) {
+  if (!scene || !eventSource) return null;
+
+  const sseSync = getSSESyncState(scene);
+  clearSSEReconnectTimer(scene);
+  sseSync.eventSource = eventSource;
+
+  const handlers = {
+    open: () => {
+      setSSEHealthy(scene, eventSource);
+    },
+    error: () => {
+      setSSEDegraded(scene, eventSource);
+
+      if (isClosedEventSource(eventSource)) {
+        closeOfficeEventStream(scene);
+        scheduleOfficeEventStreamReconnect(scene);
+      }
+    },
+    state: (event) => {
+      const parsed = parseSSEEventPayload('state', event && event.data);
+      if (!parsed) return;
+
+      const nextSyncState = getSSESyncState(scene);
+      nextSyncState.lastEventType = parsed.type;
+      applySceneStateEvent(scene, parsed.payload.raw);
+    }
+  };
+
+  for (const eventType of ['agent_join', 'agent_update', 'agent_leave', 'agent_offline']) {
+    handlers[eventType] = (event) => {
+      const parsed = parseSSEEventPayload(eventType, event && event.data);
+      if (!parsed) return;
+
+      const nextSyncState = getSSESyncState(scene);
+      nextSyncState.lastEventType = parsed.type;
+      applyOfficeAgentStreamEvent(parsed.type, parsed.payload);
+    };
+  }
+
+  sseSync.eventHandlers = handlers;
+  for (const [eventType, handler] of Object.entries(handlers)) {
+    eventSource.addEventListener(eventType, handler);
+  }
+
+  return eventSource;
+}
+
+function connectOfficeEventStream(scene) {
+  const sseSync = getSSESyncState(scene);
+  bindOfficeEventStreamLifecycle(scene);
+  if (sseSync.eventSource) return sseSync.eventSource;
+
+  const eventSource = createOfficeEventSource();
+  if (!eventSource) {
+    setSSEDegraded(scene, null);
+    return null;
+  }
+
+  return registerOfficeEventStream(scene, eventSource);
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function safeParseSSEJSON(rawData) {
+  if (rawData === undefined || rawData === null || rawData === '') return null;
+  if (isPlainObject(rawData)) return rawData;
+  if (typeof rawData !== 'string') return null;
+
+  try {
+    const parsed = JSON.parse(rawData);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch (error) {
+    console.warn('忽略无法解析的 SSE payload:', error);
+    return null;
+  }
+}
+
+function normalizeSSEEventType(eventType) {
+  if (typeof eventType !== 'string') return '';
+  return eventType.trim().toLowerCase();
+}
+
+function parseSSEStatePayload(rawData) {
+  const payload = safeParseSSEJSON(rawData);
+  if (!payload || !isPlainObject(payload.agents)) return null;
+
+  return {
+    agents: payload.agents,
+    raw: payload
+  };
+}
+
+function parseSSEAgentPayload(rawData) {
+  const payload = safeParseSSEJSON(rawData);
+  if (!payload || typeof payload.agentId !== 'string' || !payload.agentId.trim()) {
+    return null;
+  }
+
+  return {
+    agentId: payload.agentId,
+    name: typeof payload.name === 'string' ? payload.name : 'Agent',
+    isMain: !!payload.isMain,
+    state: normalizeState(payload.state),
+    detail: typeof payload.detail === 'string' ? payload.detail : '',
+    area: typeof payload.area === 'string' ? payload.area : 'breakroom',
+    authStatus: typeof payload.authStatus === 'string' ? payload.authStatus : 'pending',
+    updated_at: payload.updated_at,
+    raw: payload
+  };
+}
+
+function parseSSEEventPayload(eventType, rawData) {
+  const normalizedType = normalizeSSEEventType(eventType);
+  let payload = null;
+
+  if (normalizedType === 'state') {
+    payload = parseSSEStatePayload(rawData);
+  } else if (
+    normalizedType === 'agent_join' ||
+    normalizedType === 'agent_update' ||
+    normalizedType === 'agent_leave' ||
+    normalizedType === 'agent_offline'
+  ) {
+    payload = parseSSEAgentPayload(rawData);
+  }
+
+  if (!payload) return null;
+  return { type: normalizedType, payload };
+}
+
+function getOfficeAgentsFromStateSnapshot(snapshotAgents) {
+  if (!isPlainObject(snapshotAgents)) return [];
+
+  const officeAgents = [];
+  const areaSlots = { breakroom: 0, writing: 0, error: 0 };
+  for (const agent of Object.values(snapshotAgents)) {
+    if (!isPlainObject(agent) || typeof agent.agentId !== 'string' || !agent.agentId.trim()) {
+      continue;
+    }
+
+    const area = typeof agent.area === 'string' ? agent.area : 'breakroom';
+    const slotIndex = areaSlots[area] || 0;
+    areaSlots[area] = slotIndex + 1;
+
+    officeAgents.push({
+      agentId: agent.agentId,
+      name: typeof agent.alias === 'string' && agent.alias ? agent.alias : 'Agent',
+      isMain: false,
+      state: normalizeState(agent.state),
+      detail: typeof agent.detail === 'string' ? agent.detail : '',
+      updated_at: typeof agent.lastSeenAt === 'number' ? new Date(agent.lastSeenAt).toISOString() : undefined,
+      area,
+      authStatus: agent.online ? 'approved' : 'offline',
+      _slotIndex: slotIndex
+    });
+  }
+
+  return officeAgents;
+}
+
+function getMainAgentPayloadFromStateSnapshot(snapshotAgents) {
+  if (!isPlainObject(snapshotAgents)) return null;
+
+  const availableAgents = Object.values(snapshotAgents).filter(isPlainObject);
+  if (availableAgents.length === 0) return null;
+
+  const mainAgent = availableAgents.find(agent => agent.online) || availableAgents[0];
+  if (!mainAgent) return null;
+
+  return {
+    state: normalizeState(mainAgent.state),
+    detail: typeof mainAgent.detail === 'string' ? mainAgent.detail : '...'
+  };
+}
+
+function getStoredOfficeAgentMeta(agentId) {
+  const container = agents[agentId];
+  if (!container || !container.officeAgentMeta || !isPlainObject(container.officeAgentMeta)) {
+    return null;
+  }
+  return container.officeAgentMeta;
+}
+
+function getNextOfficeAgentSlotIndex(area, excludeAgentId) {
+  const usedSlots = new Set();
+  for (const agentId in agents) {
+    if (agentId === excludeAgentId) continue;
+    const meta = getStoredOfficeAgentMeta(agentId);
+    if (!meta || meta.area !== area || typeof meta.slotIndex !== 'number') continue;
+    usedSlots.add(meta.slotIndex);
+  }
+
+  let slotIndex = 0;
+  while (usedSlots.has(slotIndex)) {
+    slotIndex += 1;
+  }
+  return slotIndex;
+}
+
+function assignOfficeAgentSlot(agent) {
+  if (!agent || !agent.agentId) return agent;
+
+  const area = typeof agent.area === 'string' ? agent.area : 'breakroom';
+  const existingMeta = getStoredOfficeAgentMeta(agent.agentId);
+  const slotIndex = typeof agent._slotIndex === 'number'
+    ? agent._slotIndex
+    : existingMeta && existingMeta.area === area
+      ? existingMeta.slotIndex
+      : getNextOfficeAgentSlotIndex(area, agent.agentId);
+
+  return {
+    ...agent,
+    area,
+    _slotIndex: slotIndex
+  };
+}
+
+function applyOfficeAgentStreamEvent(eventType, payload) {
+  if (!payload || !payload.agentId) return;
+
+  if (eventType === 'agent_leave') {
+    removeOfficeAgent(payload.agentId);
+    return;
+  }
+
+  if (eventType === 'agent_offline') {
+    if (!agents[payload.agentId]) return;
+    markOfficeAgentOffline(assignOfficeAgentSlot(payload));
+    return;
+  }
+
+  if (eventType === 'agent_join' || eventType === 'agent_update') {
+    applyOfficeAgentPayload(assignOfficeAgentSlot(payload));
+  }
+}
+
+function reconcileOfficeAgentsFromPayload(agentPayloads) {
+  if (!Array.isArray(agentPayloads)) return;
+
+  for (const agent of agentPayloads) {
+    applyOfficeAgentPayload(agent);
+  }
+
+  const currentIds = new Set(agentPayloads.map(agent => agent.agentId));
+  for (const id in agents) {
+    if (!currentIds.has(id)) {
+      removeOfficeAgent(id);
+    }
+  }
+}
+
+function applySceneStateEvent(scene, statePayload) {
+  if (!scene || !statePayload || !isPlainObject(statePayload.agents)) return;
+
+  const mainAgentPayload = getMainAgentPayloadFromStateSnapshot(statePayload.agents);
+  if (mainAgentPayload) {
+    applyMainAgentPayload(mainAgentPayload);
+  }
+
+  reconcileOfficeAgentsFromPayload(getOfficeAgentsFromStateSnapshot(statePayload.agents));
+}
 
 
 // 状态控制栏函数（用于测试）
@@ -324,6 +719,8 @@ function preload() {
 
 function create() {
   game = this;
+  getSSESyncState(this);
+  connectOfficeEventStream(this);
   this.add.image(640, 360, 'office_bg');
 
   // === 沙发（来自 LAYOUT）===
@@ -565,6 +962,11 @@ function create() {
   });
 
   loadMemo();
+  // Sync inventory for the SSE refactor:
+  // - `fetchStatus()` is called once here for scene bootstrap.
+  // - `fetchAgents()` is called once here for scene bootstrap.
+  // - The repeating polling callers live in `update()` below.
+  // - `setState()` also triggers a one-shot `fetchStatus()` after the compat POST completes.
   fetchStatus();
   fetchAgents();
 
@@ -596,7 +998,7 @@ function create() {
       authStatus: 'approved',
       updated_at: new Date().toISOString()
     };
-    renderAgent(testNika);
+    applyOfficeAgentPayload(testNika);
 
     window.testNikaState = 'writing';
     window.testNikaTimer = setInterval(() => {
@@ -613,14 +1015,20 @@ function create() {
         authStatus: 'approved',
         updated_at: new Date().toISOString()
       };
-      renderAgent(testAgent);
+      applyOfficeAgentPayload(testAgent);
     }, 5000);
   }
 }
 
 function update(time) {
-  if (time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
-  if (time - lastAgentsFetch > AGENTS_FETCH_INTERVAL) { fetchAgents(); lastAgentsFetch = time; }
+  // Polling ownership boundary:
+  // - `fetchStatus()` is the only polling path that mutates the main Star status/detail UI.
+  // - `fetchAgents()` is the only polling path that reconciles remote office-agent sprites.
+  // - Healthy `/ui/events` pushes should suppress these recurring fetches; degraded SSE flips
+  //   `usePollingFallback` back on so both polling paths resume from this single gate.
+  const shouldPollSync = shouldUsePollingSync(game);
+  if (shouldPollSync && time - lastFetch > FETCH_INTERVAL) { fetchStatus(); lastFetch = time; }
+  if (shouldPollSync && time - lastAgentsFetch > AGENTS_FETCH_INTERVAL) { fetchAgents(); lastAgentsFetch = time; }
 
   const effectiveStateForServer = pendingDesiredState || currentState;
   if (serverroom) {
@@ -700,89 +1108,97 @@ function normalizeState(s) {
   return s;
 }
 
-function fetchStatus() {
-  fetch('/status')
-    .then(response => response.json())
-    .then(data => {
-      const nextState = normalizeState(data.state);
-      const stateInfo = STATES[nextState] || STATES.idle;
-      const changed = (pendingDesiredState === null) && (nextState !== currentState);
-      const nextLine = '[' + stateInfo.name + '] ' + (data.detail || '...');
-      if (changed) {
-        typewriterTarget = nextLine;
-        typewriterText = '';
-        typewriterIndex = 0;
+function applyMainAgentPayload(payload) {
+  const nextState = normalizeState(payload && payload.state);
+  const stateInfo = STATES[nextState] || STATES.idle;
+  const nextLine = '[' + stateInfo.name + '] ' + ((payload && payload.detail) || '...');
+  const changed = (pendingDesiredState === null) && (nextState !== currentState);
 
-        pendingDesiredState = null;
-        currentState = nextState;
+  if (changed) {
+    typewriterTarget = nextLine;
+    typewriterText = '';
+    typewriterIndex = 0;
 
-        if (nextState === 'idle') {
-          if (game.textures.exists('sofa_busy')) {
-            sofa.setTexture('sofa_busy');
-            sofa.anims.play('sofa_busy', true);
-          }
-          star.setVisible(false);
-          star.anims.stop();
-          if (window.starWorking) {
-            window.starWorking.setVisible(false);
-            window.starWorking.anims.stop();
-          }
-        } else if (nextState === 'error') {
-          sofa.anims.stop();
-          sofa.setTexture('sofa_idle');
-          star.setVisible(false);
-          star.anims.stop();
-          if (window.starWorking) {
-            window.starWorking.setVisible(false);
-            window.starWorking.anims.stop();
-          }
-        } else if (nextState === 'syncing') {
-          sofa.anims.stop();
-          sofa.setTexture('sofa_idle');
-          star.setVisible(false);
-          star.anims.stop();
-          if (window.starWorking) {
-            window.starWorking.setVisible(false);
-            window.starWorking.anims.stop();
-          }
-        } else {
-          sofa.anims.stop();
-          sofa.setTexture('sofa_idle');
-          star.setVisible(false);
-          star.anims.stop();
-          if (window.starWorking) {
-            window.starWorking.setVisible(true);
-            window.starWorking.anims.play('star_working', true);
-          }
-        }
+    pendingDesiredState = null;
+    currentState = nextState;
 
-        if (serverroom) {
-          if (nextState === 'idle') {
-            serverroom.anims.stop();
-            serverroom.setFrame(0);
-          } else {
-            serverroom.anims.play('serverroom_on', true);
-          }
-        }
+    if (nextState === 'idle') {
+      if (game.textures.exists('sofa_busy')) {
+        sofa.setTexture('sofa_busy');
+        sofa.anims.play('sofa_busy', true);
+      }
+      star.setVisible(false);
+      star.anims.stop();
+      if (window.starWorking) {
+        window.starWorking.setVisible(false);
+        window.starWorking.anims.stop();
+      }
+    } else if (nextState === 'error') {
+      sofa.anims.stop();
+      sofa.setTexture('sofa_idle');
+      star.setVisible(false);
+      star.anims.stop();
+      if (window.starWorking) {
+        window.starWorking.setVisible(false);
+        window.starWorking.anims.stop();
+      }
+    } else if (nextState === 'syncing') {
+      sofa.anims.stop();
+      sofa.setTexture('sofa_idle');
+      star.setVisible(false);
+      star.anims.stop();
+      if (window.starWorking) {
+        window.starWorking.setVisible(false);
+        window.starWorking.anims.stop();
+      }
+    } else {
+      sofa.anims.stop();
+      sofa.setTexture('sofa_idle');
+      star.setVisible(false);
+      star.anims.stop();
+      if (window.starWorking) {
+        window.starWorking.setVisible(true);
+        window.starWorking.anims.play('star_working', true);
+      }
+    }
 
-        if (syncAnimSprite) {
-          if (nextState === 'syncing') {
-            if (!syncAnimSprite.anims.isPlaying || syncAnimSprite.anims.currentAnim?.key !== 'sync_anim') {
-              syncAnimSprite.anims.play('sync_anim', true);
-            }
-          } else {
-            if (syncAnimSprite.anims.isPlaying) syncAnimSprite.anims.stop();
-            syncAnimSprite.setFrame(0);
-          }
+    if (serverroom) {
+      if (nextState === 'idle') {
+        serverroom.anims.stop();
+        serverroom.setFrame(0);
+      } else {
+        serverroom.anims.play('serverroom_on', true);
+      }
+    }
+
+    if (syncAnimSprite) {
+      if (nextState === 'syncing') {
+        if (!syncAnimSprite.anims.isPlaying || syncAnimSprite.anims.currentAnim?.key !== 'sync_anim') {
+          syncAnimSprite.anims.play('sync_anim', true);
         }
       } else {
-        if (!typewriterTarget || typewriterTarget !== nextLine) {
-          typewriterTarget = nextLine;
-          typewriterText = '';
-          typewriterIndex = 0;
-        }
+        if (syncAnimSprite.anims.isPlaying) syncAnimSprite.anims.stop();
+        syncAnimSprite.setFrame(0);
       }
-    })
+    }
+  } else if (!typewriterTarget || typewriterTarget !== nextLine) {
+    typewriterTarget = nextLine;
+    typewriterText = '';
+    typewriterIndex = 0;
+  }
+}
+
+function fetchStatus() {
+  // Main-agent ownership:
+  // - Handles the `/status` fetch path for the main Star agent only.
+  // - Owns state normalization, status text/detail updates, and main-scene animation toggles.
+  // - Current callers: scene bootstrap in `create()`, update-loop polling in `update()`,
+  //   and the one-shot compat refresh in `setState()`.
+  // - `applyMainAgentPayload()` is the shared plain-data path that SSE state bootstrap can reuse
+  //   without depending on fetch response objects.
+  fetch('/status')
+    .then(response => response.json())
+    .then(data => applyMainAgentPayload(data))
     .catch(error => {
       typewriterTarget = '连接失败，正在重试...';
       typewriterText = '';
@@ -912,6 +1328,13 @@ function showCatBubble() {
 }
 
 function fetchAgents() {
+  // Office-agent ownership:
+  // - Handles the `/agents` fetch path for non-main office occupants rendered via the shared
+  //   office-agent lifecycle helpers below.
+  // - Owns slot assignment, remote-agent create/update reconciliation, and removal of missing agents.
+  // - Current callers: scene bootstrap in `create()` and update-loop polling in `update()`.
+  // - When SSE lands, stream handlers should reuse this lifecycle boundary while fallback re-enables
+  //   this fetch path only after the stream is unhealthy.
   fetch('/agents?t=' + Date.now(), { cache: 'no-store' })
     .then(response => response.json())
     .then(data => {
@@ -923,18 +1346,8 @@ function fetchAgents() {
         const area = agent.area || 'breakroom';
         agent._slotIndex = areaSlots[area] || 0;
         areaSlots[area] = (areaSlots[area] || 0) + 1;
-        renderAgent(agent);
       }
-      // 移除不再存在的 agent
-      const currentIds = new Set(data.map(a => a.agentId));
-      for (let id in agents) {
-        if (!currentIds.has(id)) {
-          if (agents[id]) {
-            agents[id].destroy();
-            delete agents[id];
-          }
-        }
-      }
+      reconcileOfficeAgentsFromPayload(data);
     })
     .catch(error => {
       console.error('拉取 agents 失败:', error);
@@ -947,87 +1360,127 @@ function getAreaPosition(area, slotIndex) {
   return positions[idx];
 }
 
-function renderAgent(agent) {
+function getOfficeAgentAlpha(authStatus) {
+  if (authStatus === 'pending') return 0.7;
+  if (authStatus === 'rejected') return 0.4;
+  if (authStatus === 'offline') return 0.5;
+  return 1;
+}
+
+function getOfficeAgentDotColor(authStatus) {
+  if (authStatus === 'approved') return 0x22c55e;
+  if (authStatus === 'pending') return 0xf59e0b;
+  if (authStatus === 'rejected') return 0xef4444;
+  if (authStatus === 'offline') return 0x94a3b8;
+  return 0x64748b;
+}
+
+function createOfficeAgent(agent) {
   const agentId = agent.agentId;
   const name = agent.name || 'Agent';
-  const area = agent.area || 'breakroom';
   const authStatus = agent.authStatus || 'pending';
   const isMain = !!agent.isMain;
-
-  // 获取这个 agent 在区域里的位置
-  const pos = getAreaPosition(area, agent._slotIndex || 0);
-  const baseX = pos.x;
-  const baseY = pos.y;
-
-  // 颜色
-  const bodyColor = AGENT_COLORS[agentId] || AGENT_COLORS.default;
+  const pos = getAreaPosition(agent.area || 'breakroom', agent._slotIndex || 0);
+  const alpha = getOfficeAgentAlpha(authStatus);
   const nameColor = NAME_TAG_COLORS[authStatus] || NAME_TAG_COLORS.default;
+  const dotColor = getOfficeAgentDotColor(authStatus);
 
-  // 透明度（离线/待批准/拒绝时变半透明）
-  let alpha = 1;
-  if (authStatus === 'pending') alpha = 0.7;
-  if (authStatus === 'rejected') alpha = 0.4;
-  if (authStatus === 'offline') alpha = 0.5;
+  const container = game.add.container(pos.x, pos.y);
+  container.setDepth(1200 + (isMain ? 100 : 0));
+  container.setAlpha(alpha);
 
-  if (!agents[agentId]) {
-    // 新建 agent
-    const container = game.add.container(baseX, baseY);
-    container.setDepth(1200 + (isMain ? 100 : 0)); // 放到最顶层！
+  const starIcon = game.add.text(0, 0, '⭐', {
+    fontFamily: 'ArkPixel, monospace',
+    fontSize: '32px'
+  }).setOrigin(0.5);
+  starIcon.name = 'starIcon';
+  starIcon.setTint(AGENT_COLORS[agentId] || AGENT_COLORS.default);
 
-    // 像素小人：用星星图标，更明显
-    const starIcon = game.add.text(0, 0, '⭐', {
-      fontFamily: 'ArkPixel, monospace',
-      fontSize: '32px'
-    }).setOrigin(0.5);
-    starIcon.name = 'starIcon';
+  const nameTag = game.add.text(0, -36, name, {
+    fontFamily: 'ArkPixel, monospace',
+    fontSize: '14px',
+    fill: '#' + nameColor.toString(16).padStart(6, '0'),
+    stroke: '#000',
+    strokeThickness: 3,
+    backgroundColor: 'rgba(255,255,255,0.95)'
+  }).setOrigin(0.5);
+  nameTag.name = 'nameTag';
 
-    // 名字标签（漂浮）
-    const nameTag = game.add.text(0, -36, name, {
-      fontFamily: 'ArkPixel, monospace',
-      fontSize: '14px',
-      fill: '#' + nameColor.toString(16).padStart(6, '0'),
-      stroke: '#000',
-      strokeThickness: 3,
-      backgroundColor: 'rgba(255,255,255,0.95)'
-    }).setOrigin(0.5);
-    nameTag.name = 'nameTag';
+  const statusDot = game.add.circle(20, -20, 5, dotColor, alpha);
+  statusDot.setStrokeStyle(2, 0x000000, alpha);
+  statusDot.name = 'statusDot';
 
-    // 状态小点（绿色/黄色/红色）
-    let dotColor = 0x64748b;
-    if (authStatus === 'approved') dotColor = 0x22c55e;
-    if (authStatus === 'pending') dotColor = 0xf59e0b;
-    if (authStatus === 'rejected') dotColor = 0xef4444;
-    if (authStatus === 'offline') dotColor = 0x94a3b8;
-    const statusDot = game.add.circle(20, -20, 5, dotColor, alpha);
-    statusDot.setStrokeStyle(2, 0x000000, alpha);
-    statusDot.name = 'statusDot';
+  container.add([starIcon, statusDot, nameTag]);
+  container.officeAgentMeta = {
+    area: agent.area || 'breakroom',
+    slotIndex: agent._slotIndex || 0
+  };
+  agents[agentId] = container;
+  return container;
+}
 
-    container.add([starIcon, statusDot, nameTag]);
-    agents[agentId] = container;
-  } else {
-    // 更新 agent
-    const container = agents[agentId];
-    container.setPosition(baseX, baseY);
-    container.setAlpha(alpha);
-    container.setDepth(1200 + (isMain ? 100 : 0));
+function updateOfficeAgent(agent) {
+  const agentId = agent.agentId;
+  const container = agents[agentId];
+  if (!container) return createOfficeAgent(agent);
 
-    // 更新名字和颜色（如果变化）
-    const nameTag = container.getAt(2);
-    if (nameTag && nameTag.name === 'nameTag') {
-      nameTag.setText(name);
-      nameTag.setFill('#' + (NAME_TAG_COLORS[authStatus] || NAME_TAG_COLORS.default).toString(16).padStart(6, '0'));
-    }
-    // 更新状态点颜色
-    const statusDot = container.getAt(1);
-    if (statusDot && statusDot.name === 'statusDot') {
-      let dotColor = 0x64748b;
-      if (authStatus === 'approved') dotColor = 0x22c55e;
-      if (authStatus === 'pending') dotColor = 0xf59e0b;
-      if (authStatus === 'rejected') dotColor = 0xef4444;
-      if (authStatus === 'offline') dotColor = 0x94a3b8;
-      statusDot.fillColor = dotColor;
-    }
+  const authStatus = agent.authStatus || 'pending';
+  const isMain = !!agent.isMain;
+  const pos = getAreaPosition(agent.area || 'breakroom', agent._slotIndex || 0);
+  const alpha = getOfficeAgentAlpha(authStatus);
+  const dotColor = getOfficeAgentDotColor(authStatus);
+
+  container.setPosition(pos.x, pos.y);
+  container.setAlpha(alpha);
+  container.setDepth(1200 + (isMain ? 100 : 0));
+  container.officeAgentMeta = {
+    area: agent.area || 'breakroom',
+    slotIndex: agent._slotIndex || 0
+  };
+
+  const starIcon = container.getAt(0);
+  if (starIcon && starIcon.name === 'starIcon') {
+    starIcon.setTint(AGENT_COLORS[agentId] || AGENT_COLORS.default);
   }
+
+  const nameTag = container.getAt(2);
+  if (nameTag && nameTag.name === 'nameTag') {
+    nameTag.setText(agent.name || 'Agent');
+    nameTag.setFill('#' + (NAME_TAG_COLORS[authStatus] || NAME_TAG_COLORS.default).toString(16).padStart(6, '0'));
+  }
+
+  const statusDot = container.getAt(1);
+  if (statusDot && statusDot.name === 'statusDot') {
+    statusDot.fillColor = dotColor;
+    statusDot.setFillStyle(dotColor, alpha);
+    statusDot.setStrokeStyle(2, 0x000000, alpha);
+  }
+
+  return container;
+}
+
+function removeOfficeAgent(agentId) {
+  if (!agents[agentId]) return;
+  agents[agentId].destroy();
+  delete agents[agentId];
+}
+
+function markOfficeAgentOffline(agent) {
+  if (!agent || !agent.agentId) return;
+  updateOfficeAgent({ ...agent, authStatus: 'offline' });
+}
+
+function applyOfficeAgentPayload(agent) {
+  if (!agent || !agent.agentId) return;
+  if ((agent.authStatus || 'pending') === 'offline') {
+    markOfficeAgentOffline(agent);
+    return;
+  }
+  if (!agents[agent.agentId]) {
+    createOfficeAgent(agent);
+    return;
+  }
+  updateOfficeAgent(agent);
 }
 
 // 启动游戏

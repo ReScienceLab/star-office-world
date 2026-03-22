@@ -1,150 +1,135 @@
 {
-  "project": "fix-scaffold-bugs-and-core-module-tests",
-  "branchName": "compound/fix-scaffold-bugs-and-core-tests",
-  "description": "Fix scaffold correctness bugs across state mutation, lifecycle hooks, SSE behavior, memo persistence, manifest metadata, and public state safety, and add focused regression coverage for the affected core modules.",
+  "project": "frontend-sse-agent-sync",
+  "branchName": "compound/implement-frontend-sse-agent-sync",
+  "description": "Replace polling-based agent and status synchronization in frontend/game.js with a single SSE connection to /ui/events while preserving fetch-based fallback behavior.",
   "userStories": [
     {
       "id": "T-001",
-      "title": "Inspect canonical state mutation and rebuild path",
-      "description": "As a developer, I need to identify the canonical state mutation flow and room rebuild dependency points so the scaffold fix can update state in the correct place without broad refactoring.",
+      "title": "Inventory existing sync entry points in game.js",
+      "description": "As a developer, I need the current polling-based status and agent sync entry points mapped so that the SSE refactor only changes the required paths in frontend/game.js.",
       "acceptanceCriteria": [
-        "The code path used by POST /set_state and the canonical runtime mutation path are identified in repository notes or implementation comments.",
-        "The code path used to rebuild rooms from persisted agent state is identified.",
+        "frontend/game.js includes implementation notes or task comments identifying the current fetchStatus() and fetchAgents() callers",
+        "The ownership boundary for main-agent status updates, office-agent updates, and fallback activation is documented in the same file or adjacent task notes",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Documented the current canonical runtime mutation path in src/state.ts (`updateAgentState`), the compat `/set_state` divergence in src/ui-routes.ts, and the room rebuild dependency in src/index.ts."
+      "notes": "Documented the current polling sync entry points directly in frontend/game.js, including the bootstrap callers in create(), the recurring callers in update(), the setState() one-shot fetchStatus() refresh, and the ownership boundary between main-agent status updates, office-agent rendering, and future SSE fallback gating."
     },
     {
       "id": "T-002",
-      "title": "Route set_state through canonical state mutation",
-      "description": "As a developer, I need POST /set_state to use the canonical mutation path so persisted agent state and rebuilt room state remain consistent.",
+      "title": "Extract reusable main-agent apply helper",
+      "description": "As a developer, I need main-agent status application moved into a reusable helper so that SSE state payloads and fallback fetches update the player state through one code path.",
       "acceptanceCriteria": [
-        "POST /set_state updates agent state through the same mutation flow used by normal runtime updates.",
-        "Rebuilding a room after a state update reflects the latest persisted area value.",
-        "A focused regression test covers stale room rebuilding after POST /set_state.",
+        "frontend/game.js defines a helper that applies main-agent state and detail updates from plain payload data rather than a fetch response object",
+        "fetchStatus() delegates main-agent rendering or state mutation to the shared helper",
+        "The shared helper can be called during initial SSE state bootstrap without additional fetch-only assumptions",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Compat POST /set_state now calls the same updateAgentState() flow used by AWN actions via a route dependency from src/index.ts, and a node:test regression verifies room membership rebuilds from the persisted state object after the route runs."
+      "notes": "Extracted `applyMainAgentPayload(payload)` in `frontend/game.js` so main-agent state/detail application now works from plain payload data. `fetchStatus()` is reduced to transport plus delegation, and inline notes mark the helper as the shared path for future SSE bootstrap/state events."
     },
     {
       "id": "T-003",
-      "title": "Separate idle eviction from voluntary leave in lifecycle logic",
-      "description": "As a developer, I need lifecycle handling to distinguish idle eviction from voluntary leave so presence state and downstream events match actual agent behavior.",
+      "title": "Extract reusable office-agent lifecycle helpers",
+      "description": "As a developer, I need office-agent sprite lifecycle logic split into shared helpers so that SSE events and fallback fetches manage remote agents consistently.",
       "acceptanceCriteria": [
-        "Idle eviction leaves the agent present in state with online set to false.",
-        "Voluntary leave removes the agent from state.",
-        "Lifecycle logic differentiates the two paths without changing unrelated hook behavior.",
+        "frontend/game.js defines shared helpers for creating, updating, removing, and marking office agents offline from agent payload data",
+        "fetchAgents() uses the shared office-agent helpers instead of duplicating sprite lifecycle logic inline",
+        "Helper inputs are based on agent payload objects and do not depend on fetch-specific control flow",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Lifecycle leave handling now infers idle eviction from the agent's stale `lastSeenAt` timestamp versus the configured idle timeout, marking evicted agents offline in-place while preserving voluntary leave removal, with focused hook regressions for both paths."
+      "notes": "Extracted shared office-agent helpers in `frontend/game.js` for create, update, remove, offline-marking, and plain-payload application. `fetchAgents()` now delegates to those helpers for payload reconciliation, and the debug agent path reuses the same helper entry point."
     },
     {
       "id": "T-004",
-      "title": "Align emitted presence events with eviction and leave behavior",
-      "description": "As a developer, I need SSE-facing event emission to broadcast offline and leave events correctly so clients can react to idle eviction and voluntary leave distinctly.",
+      "title": "Add SSE mode state and payload parsing helpers",
+      "description": "As a developer, I need explicit SSE mode flags and defensive payload parsing helpers so that stream health and malformed event handling are centralized before wiring scene integration.",
       "acceptanceCriteria": [
-        "Idle eviction emits agent_offline instead of agent_leave.",
-        "Voluntary leave still emits agent_leave.",
-        "A focused test asserts the emitted event names for both paths.",
+        "frontend/game.js defines scene-level state for tracking whether SSE is active or degraded to polling fallback",
+        "frontend/game.js defines helper logic for safely parsing SSE event payloads and ignoring malformed JSON or missing required fields",
+        "Unknown or partial SSE payloads do not throw uncaught exceptions from the shared parsing path",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Lifecycle leave handling now emits `agent_offline` for inferred idle eviction and `agent_leave` for voluntary exit, with focused hook regressions asserting the exact SSE event names for both paths."
+      "notes": "Added scene-owned `sseSync` mode flags in `frontend/game.js` to track healthy versus degraded SSE operation separately from polling fallback, and introduced defensive `parseSSEEventPayload(eventType, rawData)` helpers that normalize known event payloads while ignoring malformed JSON, unknown types, and partial agent payloads safely."
     },
     {
       "id": "T-005",
-      "title": "Make post_memo resilient to persistence write failures",
-      "description": "As a developer, I need post_memo to preserve in-memory success when persistence fails so action handlers remain available during filesystem issues.",
+      "title": "Create EventSource lifecycle during scene setup",
+      "description": "As a user, I need the scene to open one EventSource connection during creation so that live office updates begin immediately and can be cleaned up safely.",
       "acceptanceCriteria": [
-        "post_memo updates in-memory memo state even when filesystem persistence fails.",
-        "A filesystem write failure during post_memo does not throw from the action handler.",
-        "post_memo returns an ok result when in-memory state was updated successfully.",
-        "A focused test covers the persistence failure scenario.",
+        "frontend/game.js opens an EventSource to /ui/events during scene creation",
+        "The EventSource instance is stored on the scene or an equivalent lifecycle-owned object so it is initialized once per scene lifecycle",
+        "Open and error handlers are registered on the EventSource for healthy-stream and degraded-mode transitions",
         "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "The post_memo hook now treats MemoStore append failures as best-effort persistence: it preserves the in-memory memo entry, still broadcasts the memo event, and returns ok with a focused regression covering thrown append() failures."
+      "notes": "Added `connectOfficeEventStream(scene)` in `frontend/game.js` so scene creation opens a single `EventSource('/ui/events')`, stores it on the scene-owned `sseSync` state, and registers `open`/`error` handlers that toggle healthy versus degraded SSE mode through the shared helper path."
     },
     {
       "id": "T-006",
-      "title": "Harden MemoStore startup and corrupt file loading",
-      "description": "As a developer, I need MemoStore initialization to handle directory creation failures and corrupt memo files safely so startup and reload paths remain usable.",
+      "title": "Bootstrap scene state from SSE state event",
+      "description": "As a user, I need the initial office state to load from the SSE state event so that the main agent and visible office agents render without waiting for a polling round trip.",
       "acceptanceCriteria": [
-        "MemoStore construction does not throw when memo directory creation fails.",
-        "Corrupt memo files are skipped or handled without crashing memo loading.",
-        "Valid memo files remain readable when corrupt files are present.",
-        "Focused tests cover directory creation failure and corrupt memo file handling.",
+        "frontend/game.js listens for the SSE state event",
+        "The state event payload initializes main-agent status and detail via the shared main-agent helper",
+        "The state event payload initializes the visible office-agent collection via the shared office-agent helpers",
+        "Scene bootstrap can render current server state before normal polling runs",
         "Typecheck passes"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "MemoStore construction now treats memo directory creation as best-effort, and historical memo loading skips corrupt JSON files while still returning the most recent valid day, with focused regressions covering both startup and mixed valid/corrupt history."
+      "notes": "Wired the `/ui/events` `state` listener in `frontend/game.js` so the initial public-state snapshot now selects the same main agent as `/status`, applies it through `applyMainAgentPayload()`, and reconciles the visible office agents through the shared office-agent lifecycle helpers before polling fallback runs."
     },
     {
       "id": "T-007",
-      "title": "Return deep-copied data from public state accessors",
-      "description": "As a developer, I need getPublicState to return deep copies so callers cannot mutate internal state through shared nested object references.",
+      "title": "Handle incremental agent SSE events",
+      "description": "As a user, I need incremental SSE events applied immediately so that agent joins, updates, departures, and offline transitions are reflected in the office without delay.",
       "acceptanceCriteria": [
-        "getPublicState returns new nested object or array references instead of exposing source references.",
-        "Mutating a nested field on returned public state does not change internal source state.",
-        "A focused regression test covers nested mutation safety.",
+        "agent_join events create a remote agent immediately through the shared office-agent helper",
+        "agent_update events update an existing remote agent's rendered location, detail, or status presentation through the shared helper path",
+        "agent_leave events remove the matching remote agent from scene state and rendering",
+        "agent_offline events mark the matching remote agent as offline without removing unrelated agents",
+        "Unknown event types or partial agent payloads are ignored safely without stopping later event handling",
         "Typecheck passes"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "getPublicState() now clones nested agent, room, memo, background, yesterday memo, and office config data so REST/SSE consumers cannot mutate internal state through returned snapshot references, with a focused regression proving nested mutations stay isolated."
+      "notes": "Registered `/ui/events` listeners in `frontend/game.js` for `agent_join`, `agent_update`, `agent_leave`, and `agent_offline`, routing each parsed payload through a shared `applyOfficeAgentStreamEvent()` helper. Incremental SSE payloads now reuse office-agent lifecycle helpers with slot preservation and reassignment via stored container metadata, while malformed or partial payloads continue to no-op safely through the shared parser."
     },
     {
       "id": "T-008",
-      "title": "Align manifest state_fields with public state contract",
-      "description": "As a developer, I need manifest metadata to match the public state payload exactly so consumers and tooling can rely on the documented state contract.",
+      "title": "Gate polling while SSE is healthy",
+      "description": "As a developer, I need existing polling loops guarded by SSE health so that fetchStatus() and fetchAgents() do not duplicate live updates while the stream is working.",
       "acceptanceCriteria": [
-        "Manifest state_fields exactly match the keys exposed by the public state payload.",
-        "Manifest state_fields include todayMemos and yesterdayMemo when those keys are present in public state.",
-        "No manifest state_fields entry remains for a key that is absent from public state.",
-        "A focused test validates manifest field accuracy.",
+        "Normal fetchStatus() polling is skipped while the scene is in healthy SSE mode",
+        "Normal fetchAgents() polling is skipped while the scene is in healthy SSE mode",
+        "Existing polling timers or guards are updated so the same agent state is not applied twice during healthy SSE operation",
         "Typecheck passes"
       ],
       "priority": 8,
       "passes": true,
-      "notes": "Manifest `state_fields` now comes from the canonical `PUBLIC_STATE_FIELDS` list in `src/state.ts`, replacing the stale hardcoded `memos` entry with the actual public keys (`todayMemos` and `yesterdayMemo`) and adding a hook regression that compares the join manifest against `Object.keys(getPublicState(state))`."
+      "notes": "Added `shouldUsePollingSync(scene)` in `frontend/game.js` so the recurring `update()` loop now skips `fetchStatus()` and `fetchAgents()` whenever `/ui/events` is healthy, while degraded SSE mode re-enables both polling paths through the shared `usePollingFallback` gate."
     },
     {
       "id": "T-009",
-      "title": "Add focused regression coverage for hooks, SSE, and routes",
-      "description": "As a developer, I need targeted integration tests across hooks, SSE, and UI routes so the offline, leave, manifest, and route-level memo behaviors stay locked down.",
+      "title": "Restore polling fallback and scene cleanup around SSE failure",
+      "description": "As a user, I need fetch-based synchronization to resume after SSE errors and clean up correctly on teardown so that the office stays current when the stream fails or the scene is destroyed.",
       "acceptanceCriteria": [
-        "Hooks tests verify idle eviction marks an agent offline without removing it.",
-        "Hooks tests verify voluntary leave removes the agent and emits the leave event.",
-        "SSE or route-level tests verify agent_offline for idle eviction and agent_leave for voluntary leave.",
-        "UI route tests verify manifest state_fields match the public state payload contract.",
+        "SSE error handling enables fetchStatus() and fetchAgents() fallback polling after stream failure",
+        "Recovery logic can disable fallback polling again if SSE reconnects or a new healthy EventSource is established",
+        "Scene teardown closes the active EventSource and clears any related SSE mode flags or listeners",
         "Typecheck passes"
       ],
       "priority": 9,
       "passes": true,
-      "notes": "Added explicit SSEManager payload regressions for `agent_offline` and `agent_leave`, and extended the UI route suite to compare `/ui/state` keys against the manifest `state_fields` contract while keeping the existing hook-level offline/leave coverage green."
-    },
-    {
-      "id": "T-010",
-      "title": "Run the standard test workflow with new core module coverage",
-      "description": "As a developer, I need the standard project test command to run the new state, memo-store, hooks, SSE, and route regressions so the fixes are verified under the same workflow used by CI and contributors.",
-      "acceptanceCriteria": [
-        "The project test command runs the new or updated state, hooks, SSE, memo-store, and UI route tests without extra manual steps.",
-        "All new and affected tests pass under the standard test command.",
-        "Any required test setup changes are committed in the repository.",
-        "Typecheck passes"
-      ],
-      "priority": 10,
-      "passes": true,
-      "notes": "Updated the standard `npm test` workflow to run `npm run build` before `node --test`, so the state, hooks, SSE, memo-store, and UI route regressions execute against fresh `dist/` output without extra manual steps; verified with `npm test` and `npm run lint`."
+      "notes": "Completed the SSE failure/recovery path in `frontend/game.js` by tracking bound EventSource listeners on `scene.sseSync`, degrading immediately to polling on stream errors, scheduling a fresh `/ui/events` connection when the browser marks the stream closed, and closing/removing the active stream plus timers during scene `shutdown`/`destroy`. Existing `open` handling now clears fallback polling again after reconnects."
     }
   ]
 }
