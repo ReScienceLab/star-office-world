@@ -14,6 +14,7 @@
 - `frontend/game.js` currently centralizes sync entry points in `create()` and `update()`: `fetchStatus()` owns main-agent UI/status mutation, while `fetchAgents()` owns remote office-agent reconciliation, so SSE work should reuse those boundaries and gate polling at the update loop.
 - `frontend/game.js` should route main-agent state/detail updates through `applyMainAgentPayload(payload)` so fetch bootstrap, compat refreshes, and upcoming SSE state events share the same animation/UI mutation path.
 - `frontend/game.js` should route remote office-agent payloads through `applyOfficeAgentPayload(agent)`, which delegates to shared `createOfficeAgent()`, `updateOfficeAgent()`, `removeOfficeAgent()`, and `markOfficeAgentOffline()` helpers so polling and future SSE events do not duplicate sprite lifecycle logic.
+- `frontend/game.js` should keep SSE transport health on the scene-owned `sseSync` object and funnel raw `/ui/events` payloads through `parseSSEEventPayload(eventType, rawData)` so malformed JSON and partial agent events degrade safely to `null`.
 
 ---
 
@@ -143,4 +144,14 @@
   - Patterns discovered: Remote office-agent updates should flow through `applyOfficeAgentPayload(agent)` so fetch reconciliation and future SSE events share the same sprite lifecycle path.
   - Gotchas encountered: The `/agents` polling path is still responsible for assigning per-area `_slotIndex` values before calling the shared helpers, so SSE event handlers will need an equivalent slot-assignment step or a stateful reuse strategy.
   - Useful context: `markOfficeAgentOffline(agent)` now preserves the same container and just reapplies the payload with `authStatus: 'offline'`, which is the entry point to reuse for `agent_offline` SSE events.
+---
+
+## 2026-03-22 17:30:58 UTC - T-004
+- Added scene-owned SSE sync state helpers in `frontend/game.js` for healthy, degraded, fallback-enabled, and active-EventSource tracking, ready for the later `/ui/events` lifecycle wiring.
+- Added defensive SSE payload parsers for `state`, `agent_join`, `agent_update`, `agent_leave`, and `agent_offline` events so malformed JSON, unknown event names, and partial agent payloads return `null` instead of throwing.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`
+- **Learnings for future iterations:**
+  - Patterns discovered: Frontend SSE integration should mutate `scene.sseSync` through the helper layer (`getSSESyncState()`, `setSSEHealthy()`, `setSSEDegraded()`) instead of sprinkling ad hoc booleans across `create()` and `update()`.
+  - Gotchas encountered: Agent SSE events need a non-empty `agentId`; the shared parser should reject partial payloads early so later event handlers can no-op on `null` without their own JSON/error handling.
+  - Useful context: Browser verification was skipped for this frontend refactor because no browser verification skill is installed in this workspace, so this iteration relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
 ---

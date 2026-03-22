@@ -55,8 +55,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added scene-owned `sseSync` mode flags in `frontend/game.js` to track healthy versus degraded SSE operation separately from polling fallback, and introduced defensive `parseSSEEventPayload(eventType, rawData)` helpers that normalize known event payloads while ignoring malformed JSON, unknown types, and partial agent payloads safely."
     },
     {
       "id": "T-005",

@@ -202,6 +202,11 @@ const TYPEWRITER_DELAY = 50;
 let agents = {}; // agentId -> sprite/container
 let lastAgentsFetch = 0;
 const AGENTS_FETCH_INTERVAL = 2500;
+const SSE_MODE = {
+  polling: 'polling',
+  healthy: 'healthy',
+  degraded: 'degraded'
+};
 
 // agent 颜色配置
 const AGENT_COLORS = {
@@ -253,6 +258,120 @@ const AREA_POSITIONS = {
     { x: 260, y: 260 }
   ]
 };
+
+function createSSESyncState() {
+  return {
+    mode: SSE_MODE.polling,
+    isHealthy: false,
+    usePollingFallback: true,
+    eventSource: null,
+    lastEventType: null
+  };
+}
+
+function getSSESyncState(scene) {
+  if (!scene) return createSSESyncState();
+  if (!scene.sseSync) {
+    scene.sseSync = createSSESyncState();
+  }
+  return scene.sseSync;
+}
+
+function setSSEHealthy(scene, eventSource) {
+  const sseSync = getSSESyncState(scene);
+  sseSync.mode = SSE_MODE.healthy;
+  sseSync.isHealthy = true;
+  sseSync.usePollingFallback = false;
+  sseSync.eventSource = eventSource || sseSync.eventSource || null;
+  return sseSync;
+}
+
+function setSSEDegraded(scene, eventSource) {
+  const sseSync = getSSESyncState(scene);
+  sseSync.mode = SSE_MODE.degraded;
+  sseSync.isHealthy = false;
+  sseSync.usePollingFallback = true;
+  sseSync.eventSource = eventSource || sseSync.eventSource || null;
+  return sseSync;
+}
+
+function clearSSEEventSource(scene) {
+  const sseSync = getSSESyncState(scene);
+  sseSync.eventSource = null;
+  return sseSync;
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function safeParseSSEJSON(rawData) {
+  if (rawData === undefined || rawData === null || rawData === '') return null;
+  if (isPlainObject(rawData)) return rawData;
+  if (typeof rawData !== 'string') return null;
+
+  try {
+    const parsed = JSON.parse(rawData);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch (error) {
+    console.warn('忽略无法解析的 SSE payload:', error);
+    return null;
+  }
+}
+
+function normalizeSSEEventType(eventType) {
+  if (typeof eventType !== 'string') return '';
+  return eventType.trim().toLowerCase();
+}
+
+function parseSSEStatePayload(rawData) {
+  const payload = safeParseSSEJSON(rawData);
+  if (!payload) return null;
+
+  return {
+    state: normalizeState(payload.state),
+    detail: typeof payload.detail === 'string' ? payload.detail : '...',
+    raw: payload
+  };
+}
+
+function parseSSEAgentPayload(rawData) {
+  const payload = safeParseSSEJSON(rawData);
+  if (!payload || typeof payload.agentId !== 'string' || !payload.agentId.trim()) {
+    return null;
+  }
+
+  return {
+    agentId: payload.agentId,
+    name: typeof payload.name === 'string' ? payload.name : 'Agent',
+    isMain: !!payload.isMain,
+    state: normalizeState(payload.state),
+    detail: typeof payload.detail === 'string' ? payload.detail : '',
+    area: typeof payload.area === 'string' ? payload.area : 'breakroom',
+    authStatus: typeof payload.authStatus === 'string' ? payload.authStatus : 'pending',
+    updated_at: payload.updated_at,
+    raw: payload
+  };
+}
+
+function parseSSEEventPayload(eventType, rawData) {
+  const normalizedType = normalizeSSEEventType(eventType);
+  let payload = null;
+
+  if (normalizedType === 'state') {
+    payload = parseSSEStatePayload(rawData);
+  } else if (
+    normalizedType === 'agent_join' ||
+    normalizedType === 'agent_update' ||
+    normalizedType === 'agent_leave' ||
+    normalizedType === 'agent_offline'
+  ) {
+    payload = parseSSEAgentPayload(rawData);
+  }
+
+  if (!payload) return null;
+  return { type: normalizedType, payload };
+}
 
 
 // 状态控制栏函数（用于测试）
@@ -324,6 +443,7 @@ function preload() {
 
 function create() {
   game = this;
+  getSSESyncState(this);
   this.add.image(640, 360, 'office_bg');
 
   // === 沙发（来自 LAYOUT）===
