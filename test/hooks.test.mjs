@@ -34,8 +34,8 @@ function createTestDeps() {
   };
 }
 
-test("idle eviction marks the agent offline without removing presence state", async (t) => {
-  const { hooks, state, cleanup } = createTestDeps();
+test("idle eviction marks the agent offline and emits agent_offline", async (t) => {
+  const { hooks, state, broadcasts, cleanup } = createTestDeps();
   t.after(cleanup);
 
   addAgent(state, "agent-1", "Alpha", undefined, "writing", "Drafting");
@@ -49,10 +49,11 @@ test("idle eviction marks the agent offline without removing presence state", as
   assert.equal(state.agents["agent-1"].area, "breakroom");
   assert.deepEqual(state.rooms.breakroom, []);
   assert.deepEqual(state.rooms.writing, []);
+  assert.deepEqual(broadcasts, [{ event: "agent_offline", data: { agentId: "agent-1" } }]);
 });
 
-test("voluntary leave removes the agent from state", async (t) => {
-  const { hooks, state, cleanup } = createTestDeps();
+test("voluntary leave removes the agent from state and emits agent_leave", async (t) => {
+  const { hooks, state, broadcasts, cleanup } = createTestDeps();
   t.after(cleanup);
 
   addAgent(state, "agent-1", "Alpha", undefined, "idle", "Available");
@@ -63,4 +64,5 @@ test("voluntary leave removes the agent from state", async (t) => {
   assert.deepEqual(state.rooms.breakroom, []);
   assert.deepEqual(state.rooms.writing, []);
   assert.deepEqual(state.rooms.error, []);
+  assert.deepEqual(broadcasts, [{ event: "agent_leave", data: { agentId: "agent-1" } }]);
 });

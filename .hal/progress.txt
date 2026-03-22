@@ -5,6 +5,7 @@
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
 - The current `node --test test/*.test.mjs` harness imports built files from `dist/`, so run `npm run build` before `npm test` whenever source changes affect test coverage.
 - The AWN SDK calls the same `onLeave(agentId)` hook for explicit `world.leave` and idle eviction; distinguish the two inside `src/hooks.ts` by comparing the agent's `lastSeenAt` to `manifest.lifecycle.idleTimeoutMs`.
+- Presence SSE names should mirror the inferred leave path in `src/hooks.ts`: idle eviction broadcasts `agent_offline`, while voluntary exits broadcast `agent_leave`.
 
 ---
 
@@ -35,4 +36,14 @@
   - Patterns discovered: The SDK does not pass an eviction reason into `onLeave()`, so lifecycle behavior has to infer idle eviction from the tracked agent timestamp and timeout.
   - Gotchas encountered: `markOffline()` keeps the agent in `state.agents` but removes them from derived room occupancy because `rebuildRooms()` only includes `online` agents.
   - Useful context: Hook regressions can exercise `createOfficeHooks()` directly with a minimal `broadcast()` spy and a temporary `MemoStore`, without booting Fastify.
+---
+
+## 2026-03-22 16:44:02 UTC - T-004
+- Aligned lifecycle presence broadcasts so inferred idle eviction emits `agent_offline` and voluntary leave continues to emit `agent_leave`.
+- Extended the hook regression coverage to assert the exact SSE event names emitted for both leave paths.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/hooks.ts`, `test/hooks.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: `onLeave()` owns both the canonical presence mutation and the SSE event name, so tests should assert state changes and emitted event names together.
+  - Gotchas encountered: Because the test harness imports `dist/`, event-regression assertions can appear stale unless the build is refreshed before running `npm test`.
+  - Useful context: A simple `broadcasts` array spy in `test/hooks.test.mjs` is enough to verify lifecycle SSE behavior without spinning up the SSE manager or Fastify.
 ---

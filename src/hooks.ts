@@ -204,10 +204,11 @@ export function createOfficeHooks(deps: HooksDeps): WorldHooks {
 
       if (wasIdleEvicted) {
         markOffline(state, agentId);
+        sse.broadcast("agent_offline", { agentId });
       } else {
         removeAgent(state, agentId);
+        sse.broadcast("agent_leave", { agentId });
       }
-      sse.broadcast("agent_leave", { agentId });
       console.log(
         wasIdleEvicted
           ? `[office] ${alias} marked offline (${Object.keys(state.agents).length} agents)`

@@ -55,8 +55,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Lifecycle leave handling now emits `agent_offline` for inferred idle eviction and `agent_leave` for voluntary exit, with focused hook regressions asserting the exact SSE event names for both paths."
     },
     {
       "id": "T-005",
