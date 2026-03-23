@@ -2,6 +2,8 @@
  * Star Office World — In-memory state management
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type {
   OfficeWorldState,
   OfficeAgent,
@@ -20,6 +22,35 @@ const AVATARS = [
   "guest_role_5",
   "guest_role_6",
 ];
+
+const SNAPSHOT_FILE = "agents-snapshot.json";
+let _dataDir = "./data";
+
+export function initSnapshotDir(dataDir: string): void {
+  _dataDir = dataDir;
+}
+
+export function saveAgentsSnapshot(
+  agents: Record<string, OfficeAgent>,
+): void {
+  const file = path.join(_dataDir, SNAPSHOT_FILE);
+  fs.mkdirSync(_dataDir, { recursive: true });
+  fs.writeFile(file, JSON.stringify(agents, null, 2), (err) => {
+    if (err) console.warn("[office] Failed to save agents snapshot:", err);
+  });
+}
+
+export function loadAgentsSnapshot(
+  dataDir: string,
+): Record<string, OfficeAgent> | null {
+  const file = path.join(dataDir, SNAPSHOT_FILE);
+  try {
+    const raw = fs.readFileSync(file, "utf8");
+    return JSON.parse(raw) as Record<string, OfficeAgent>;
+  } catch {
+    return null;
+  }
+}
 
 export const PUBLIC_STATE_FIELDS: ReadonlyArray<keyof OfficeWorldState> = [
   "agents",
@@ -77,6 +108,7 @@ export function addAgent(
   avatar?: string,
   initialState?: string,
   detail?: string,
+  isMain?: boolean,
 ): OfficeAgent {
   const agState = normalizeState(initialState);
   const agent: OfficeAgent = {
@@ -89,9 +121,11 @@ export function addAgent(
     joinedAt: Date.now(),
     lastSeenAt: Date.now(),
     online: true,
+    isMain: isMain ?? false,
   };
   state.agents[agentId] = agent;
   rebuildRooms(state);
+  saveAgentsSnapshot(state.agents);
   return agent;
 }
 
@@ -112,6 +146,7 @@ export function updateAgentState(
   agent.lastSeenAt = Date.now();
   agent.online = true;
   rebuildRooms(state);
+  saveAgentsSnapshot(state.agents);
   return agent;
 }
 
@@ -133,6 +168,7 @@ export function removeAgent(
   if (!state.agents[agentId]) return false;
   delete state.agents[agentId];
   rebuildRooms(state);
+  saveAgentsSnapshot(state.agents);
   return true;
 }
 
@@ -146,6 +182,7 @@ export function markOffline(
   agent.state = "idle";
   agent.area = "breakroom";
   rebuildRooms(state);
+  saveAgentsSnapshot(state.agents);
   return true;
 }
 

@@ -24,6 +24,7 @@ export function loadConfig(overrides?: Partial<StarOfficeConfig>): StarOfficeCon
     geminiApiKey: overrides?.geminiApiKey ?? process.env["GEMINI_API_KEY"],
     geminiModel: overrides?.geminiModel ?? process.env["GEMINI_MODEL"] ?? "nanobanana-pro",
     language: overrides?.language ?? (process.env["STAR_OFFICE_LANG"] as "cn" | "en" | "jp") ?? "cn",
+    mainAgentId: overrides?.mainAgentId ?? process.env["STAR_OFFICE_MAIN_AGENT_ID"],
   };
 }
 

@@ -13,6 +13,9 @@ import {
   createInitialState,
   getPublicState,
   updateAgentState,
+  initSnapshotDir,
+  loadAgentsSnapshot,
+  rebuildRooms,
 } from "./state.js";
 import { createOfficeHooks } from "./hooks.js";
 import { SSEManager } from "./sse.js";
@@ -35,6 +38,7 @@ export async function createStarOfficeWorld(
   overrides?: Partial<StarOfficeConfig>,
 ): Promise<WorldServer & { sse: SSEManager }> {
   const config = loadConfig(overrides);
+  const dataDir = config.dataDir ?? "./data";
   const state = createInitialState(config);
   const sse = new SSEManager();
   const memoStore = new MemoStore(config.memoryDir ?? "./data/memos");
@@ -42,10 +46,17 @@ export async function createStarOfficeWorld(
   // Load yesterday memo into state on startup
   state.yesterdayMemo = memoStore.getYesterday();
   state.todayMemos = memoStore.getToday();
-  // Room membership is rebuilt from the persisted `state.agents` object by
-  // `rebuildRooms()` in `src/state.ts`. Fresh process startup creates empty
-  // room buckets, and later stories that hydrate saved agents must route that
-  // data through the same rebuild helper before exposing state.
+
+  // Hydrate agents from last snapshot (all restored as offline)
+  initSnapshotDir(dataDir);
+  const snapshot = loadAgentsSnapshot(dataDir);
+  if (snapshot) {
+    for (const agent of Object.values(snapshot)) {
+      state.agents[agent.agentId] = { ...agent, online: false };
+    }
+    rebuildRooms(state);
+    console.log(`[office] Restored ${Object.keys(snapshot).length} agent(s) from snapshot`);
+  }
 
   const hooks = createOfficeHooks({
     state,
@@ -54,6 +65,7 @@ export async function createStarOfficeWorld(
     worldId: config.worldId ?? "star-office",
     worldName: config.officeName ?? "Star Office",
     worldTheme: "pixel-office",
+    mainAgentId: config.mainAgentId,
   });
 
   const server = await createWorldServer(

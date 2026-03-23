@@ -64,6 +64,7 @@ export interface OfficeAgent {
   joinedAt: number;
   lastSeenAt: number;
   online: boolean;
+  isMain?: boolean;
 }
 
 // ── Memo ─────────────────────────────────────────────────────────────────────
@@ -135,4 +136,5 @@ export interface StarOfficeConfig {
   geminiApiKey?: string;
   geminiModel?: string;
   language?: "cn" | "en" | "jp";
+  mainAgentId?: string;
 }

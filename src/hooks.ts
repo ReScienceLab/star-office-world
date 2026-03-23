@@ -29,6 +29,7 @@ export interface HooksDeps {
   worldId: string;
   worldName: string;
   worldTheme: string;
+  mainAgentId?: string;
 }
 
 export function createManifest(deps: HooksDeps): WorldManifest {
@@ -114,7 +115,7 @@ export function createManifest(deps: HooksDeps): WorldManifest {
 }
 
 export function createOfficeHooks(deps: HooksDeps): WorldHooks {
-  const { state, sse, memoStore } = deps;
+  const { state, sse, memoStore, mainAgentId } = deps;
   const manifest = createManifest(deps);
   const idleTimeoutMs = manifest.lifecycle?.idleTimeoutMs ?? 300_000;
 
@@ -125,16 +126,25 @@ export function createOfficeHooks(deps: HooksDeps): WorldHooks {
       const initialState = (data["state"] as string) ?? undefined;
       const detail = (data["detail"] as string) ?? undefined;
 
-      const agent = addAgent(state, agentId, alias, avatar, initialState, detail);
+      const isMain = !!mainAgentId && agentId === mainAgentId;
+      const agent = addAgent(state, agentId, alias, avatar, initialState, detail, isMain);
       sse.broadcast("agent_join", agent);
 
       console.log(
         `[office] ${alias || agentId.slice(0, 8)} joined → ${agent.area} (${Object.keys(state.agents).length} agents)`,
       );
 
+      const publicState = getPublicState(state);
       return {
         manifest,
-        state: getPublicState(state),
+        state: isMain
+          ? {
+              ...publicState,
+              yourRole: "host",
+              roleDescription:
+                "You are the host of this office. Your state (set_state) drives the main character avatar visible to all visitors. Use set_state to reflect what you are working on, and post_memo to leave notes for visitors.",
+            }
+          : publicState,
       };
     },
 

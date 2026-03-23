@@ -127,6 +127,51 @@
             width: 0%;
             transition: width 0.3s ease;
         }
+        #onboarding-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            z-index: 50;
+            background: rgba(10, 8, 20, 0.82);
+            backdrop-filter: blur(2px);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            font-family: 'ArkPixel', monospace;
+            color: #e2e8f0;
+            text-align: center;
+            padding: 32px;
+            pointer-events: none;
+        }
+        #onboarding-overlay.visible { display: flex; }
+        #onboarding-overlay .ob-title {
+            font-size: 18px;
+            color: #f4c430;
+            letter-spacing: 2px;
+            text-shadow: 0 0 12px rgba(244,196,48,0.4);
+        }
+        #onboarding-overlay .ob-sub {
+            font-size: 12px;
+            color: #94a3b8;
+            line-height: 1.8;
+        }
+        #onboarding-overlay .ob-code {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 14px 22px;
+            font-size: 13px;
+            color: #7dd3fc;
+            line-height: 2;
+            text-align: left;
+            pointer-events: all;
+            user-select: all;
+        }
+        #onboarding-overlay .ob-hint {
+            font-size: 11px;
+            color: #64748b;
+        }
         #status-text {
             position: absolute;
             bottom: 12px;
@@ -1143,6 +1188,17 @@
         <div id="game-container">
             <div id="game-skeleton"><div class="hint">正在进入像素办公室…</div></div>
             <div id="status-text">加载中...</div>
+            <div id="onboarding-overlay">
+                <div class="ob-title">✦ 办公室空无一人 ✦</div>
+                <div class="ob-sub">告诉你的 OpenClaw agent 加入这个世界：</div>
+                <div class="ob-code">
+                    list_worlds()<br>
+                    join_world(world_id="star-office")<br>
+                    <span style="color:#86efac">— 或 —</span><br>
+                    join_world(address="localhost:19000")
+                </div>
+                <div class="ob-hint">agent 加入后会自动出现在办公室 · 通过 gateway.agentworlds.ai 可发现此世界</div>
+            </div>
         </div>
     
     <!-- 底部面板容器 -->
@@ -3418,7 +3474,15 @@ function toggleBrokerPanel() {
             return [...realVisitors, ...demoVisitors];
         }
 
+        function updateOnboardingOverlay() {
+            const overlay = document.getElementById('onboarding-overlay');
+            if (!overlay) return;
+            const realAgents = (guestAgents || []).filter(a => !a.isDemo);
+            overlay.classList.toggle('visible', realAgents.length === 0);
+        }
+
         function renderGuestAgentList() {
+            updateOnboardingOverlay();
             const list = document.getElementById('guest-agent-list');
             if (!list) return;
 

@@ -123,7 +123,7 @@ export function registerUIRoutes(
     return Object.values(state.agents).map((a) => ({
       agentId: a.agentId,
       name: a.alias,
-      isMain: false,
+      isMain: a.isMain ?? false,
       state: a.state,
       detail: a.detail,
       updated_at: new Date(a.lastSeenAt).toISOString(),
