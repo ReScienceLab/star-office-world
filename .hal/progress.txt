@@ -2,6 +2,7 @@
 
 ## Codebase Patterns
 
+- `frontend/game.js` should normalize backend agent-shaped payloads through `normalizeBackendAgentPayload(rawAgent, options)` and layer snapshot-specific field sources such as alias, online-derived presence, and `lastSeenAt` timestamps through the helper's option callbacks instead of duplicating object mapping logic.
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
 - `getPublicState()` must deep-copy nested collections (`agents`, `rooms`, memos, config/background objects) before returning snapshots; shallow copies expose live state to REST/SSE callers.
 - The test suite imports built files from `dist/`; keep `npm test` responsible for rebuilding first so contributors and CI always run tests against fresh output.
@@ -212,4 +213,13 @@
   - Patterns discovered: Initial snapshot office-agent normalization and incremental SSE agent normalization already use separate helpers in `frontend/game.js`, so the next normalization refactor should converge those two paths rather than adding a third mapper.
   - Gotchas encountered: `getMainAgentPayloadFromStateSnapshot()` and the `/status` route still infer ownership from online presence instead of an explicit `isMain` flag, which is the current regression surface for guest-agent takeover.
   - Useful context: `/ui/events` `state` snapshots enter through `applySceneStateEvent()`, which calls both `getMainAgentPayloadFromStateSnapshot()` and `getOfficeAgentsFromStateSnapshot()`, so ownership and office-agent rendering diverge from one shared snapshot payload.
+---
+## 2026-03-23 03:44:32 UTC - T-002
+- Added `normalizeBackendAgentPayload(rawAgent, options)` in `frontend/game.js` as the shared frontend normalization entry point for backend agent payloads.
+- Rewired snapshot normalization in `getOfficeAgentsFromStateSnapshot()` and SSE `agent_join`/`agent_update` normalization in `parseSSEAgentPayload()` to call the same helper, while preserving the current snapshot-specific alias, auth, and timestamp derivation through callbacks.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`
+- **Learnings for future iterations:**
+  - Patterns discovered: Snapshot and SSE agent payloads should share the same normalizer, with source-specific field derivation passed in as callbacks instead of open-coded object construction.
+  - Gotchas encountered: Browser verification was skipped for this frontend story because no local dev server was running, even though a browser automation skill is installed.
+  - Useful context: `normalizeBackendAgentPayload()` is now the narrow place to adjust future alias-preference and online-to-auth fallback behavior without touching both snapshot and SSE parsing separately.
 ---

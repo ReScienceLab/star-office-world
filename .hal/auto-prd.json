@@ -29,8 +29,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added `normalizeBackendAgentPayload(rawAgent, options)` in `frontend/game.js` and routed both `getOfficeAgentsFromStateSnapshot()` and `parseSSEAgentPayload()` through it. Snapshot-specific label, auth-status, and timestamp derivation now layer on top of the shared normalizer via callback options, while SSE `agent_join` and `agent_update` keep using the same canonical field mapping entry point."
     },
     {
       "id": "T-003",

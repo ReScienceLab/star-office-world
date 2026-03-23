@@ -479,25 +479,47 @@ function parseSSEStatePayload(rawData) {
   };
 }
 
+function normalizeBackendAgentPayload(rawAgent, options = {}) {
+  if (!isPlainObject(rawAgent)) return null;
+
+  const agentId = typeof rawAgent.agentId === 'string' ? rawAgent.agentId.trim() : '';
+  if (!agentId) return null;
+
+  const area = typeof rawAgent.area === 'string' ? rawAgent.area : 'breakroom';
+  const name = typeof options.getName === 'function'
+    ? options.getName(rawAgent)
+    : typeof rawAgent.name === 'string'
+      ? rawAgent.name
+      : 'Agent';
+  const authStatus = typeof options.getAuthStatus === 'function'
+    ? options.getAuthStatus(rawAgent)
+    : typeof rawAgent.authStatus === 'string'
+      ? rawAgent.authStatus
+      : 'pending';
+  const updatedAt = typeof options.getUpdatedAt === 'function'
+    ? options.getUpdatedAt(rawAgent)
+    : rawAgent.updated_at;
+
+  return {
+    agentId,
+    name: typeof name === 'string' && name ? name : 'Agent',
+    isMain: !!rawAgent.isMain,
+    state: normalizeState(rawAgent.state),
+    detail: typeof rawAgent.detail === 'string' ? rawAgent.detail : '',
+    area,
+    authStatus: typeof authStatus === 'string' ? authStatus : 'pending',
+    updated_at: updatedAt,
+    raw: rawAgent
+  };
+}
+
 function parseSSEAgentPayload(rawData) {
   const payload = safeParseSSEJSON(rawData);
-  if (!payload || typeof payload.agentId !== 'string' || !payload.agentId.trim()) {
-    return null;
-  }
+  if (!payload) return null;
 
   // Audit note: incremental `agent_join` and `agent_update` SSE events
   // currently normalize here before reaching `applyOfficeAgentStreamEvent()`.
-  return {
-    agentId: payload.agentId,
-    name: typeof payload.name === 'string' ? payload.name : 'Agent',
-    isMain: !!payload.isMain,
-    state: normalizeState(payload.state),
-    detail: typeof payload.detail === 'string' ? payload.detail : '',
-    area: typeof payload.area === 'string' ? payload.area : 'breakroom',
-    authStatus: typeof payload.authStatus === 'string' ? payload.authStatus : 'pending',
-    updated_at: payload.updated_at,
-    raw: payload
-  };
+  return normalizeBackendAgentPayload(payload);
 }
 
 function parseSSEEventPayload(eventType, rawData) {
@@ -525,25 +547,28 @@ function getOfficeAgentsFromStateSnapshot(snapshotAgents) {
   const officeAgents = [];
   const areaSlots = { breakroom: 0, writing: 0, error: 0 };
   for (const agent of Object.values(snapshotAgents)) {
-    if (!isPlainObject(agent) || typeof agent.agentId !== 'string' || !agent.agentId.trim()) {
+    const normalizedAgent = normalizeBackendAgentPayload(agent, {
+      getName: (snapshotAgent) => typeof snapshotAgent.alias === 'string' && snapshotAgent.alias
+        ? snapshotAgent.alias
+        : 'Agent',
+      getAuthStatus: (snapshotAgent) => snapshotAgent.online ? 'approved' : 'offline',
+      getUpdatedAt: (snapshotAgent) => typeof snapshotAgent.lastSeenAt === 'number'
+        ? new Date(snapshotAgent.lastSeenAt).toISOString()
+        : undefined
+    });
+    if (!normalizedAgent) {
       continue;
     }
 
-    const area = typeof agent.area === 'string' ? agent.area : 'breakroom';
+    const area = normalizedAgent.area;
     const slotIndex = areaSlots[area] || 0;
     areaSlots[area] = slotIndex + 1;
 
     // Audit note: initial state snapshots normalize office-agent payloads here
     // before `reconcileOfficeAgentsFromPayload()` applies them to the scene.
     officeAgents.push({
-      agentId: agent.agentId,
-      name: typeof agent.alias === 'string' && agent.alias ? agent.alias : 'Agent',
+      ...normalizedAgent,
       isMain: false,
-      state: normalizeState(agent.state),
-      detail: typeof agent.detail === 'string' ? agent.detail : '',
-      updated_at: typeof agent.lastSeenAt === 'number' ? new Date(agent.lastSeenAt).toISOString() : undefined,
-      area,
-      authStatus: agent.online ? 'approved' : 'offline',
       _slotIndex: slotIndex
     });
   }
