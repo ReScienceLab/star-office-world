@@ -49,6 +49,7 @@ for (const functionName of [
   "normalizeSSEEventType",
   "parseSSEEventPayload",
   "getOfficeAgentsFromStateSnapshot",
+  "getMainAgentPayloadFromStateSnapshot",
   "getOfficeAgentAlpha",
   "getOfficeAgentDotColor"
 ]) {
@@ -165,4 +166,45 @@ test("snapshot office agents render offline fallback instead of pending when aut
   assert.equal(snapshotAgent.authStatus, "offline");
   assert.equal(context.getOfficeAgentAlpha(snapshotAgent.authStatus), 0.5);
   assert.equal(context.getOfficeAgentDotColor(snapshotAgent.authStatus), 0x94a3b8);
+});
+
+test("getMainAgentPayloadFromStateSnapshot returns null when no agent is marked as main", () => {
+  const payload = context.getMainAgentPayloadFromStateSnapshot({
+    "guest-online": {
+      agentId: "guest-online",
+      alias: "Guest Online",
+      online: true,
+      state: "writing"
+    },
+    "guest-offline": {
+      agentId: "guest-offline",
+      alias: "Guest Offline",
+      online: false,
+      state: "idle"
+    }
+  });
+
+  assert.equal(payload, null);
+});
+
+test("getMainAgentPayloadFromStateSnapshot returns the explicit main agent payload", () => {
+  const payload = context.getMainAgentPayloadFromStateSnapshot({
+    "guest-online": {
+      agentId: "guest-online",
+      alias: "Guest Online",
+      online: true,
+      state: "writing"
+    },
+    "owner-agent": {
+      agentId: "owner-agent",
+      alias: "Owner",
+      isMain: true,
+      online: false,
+      state: "reviewing",
+      detail: "Checking notes"
+    }
+  });
+
+  assert.equal(payload.state, "reviewing");
+  assert.equal(payload.detail, "Checking notes");
 });

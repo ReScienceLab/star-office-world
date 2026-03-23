@@ -86,8 +86,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated `frontend/game.js:getMainAgentPayloadFromStateSnapshot()` so snapshot ownership returns a Star payload only from an agent with `isMain === true`, instead of falling back to the first online or first available guest. Extended `test/frontend-normalization.test.mjs` with regressions that cover the no-main snapshot path and explicit-main selection."
     },
     {
       "id": "T-007",

@@ -2,6 +2,7 @@
 
 ## Codebase Patterns
 
+- `frontend/game.js:getMainAgentPayloadFromStateSnapshot()` should only derive Star ownership from an agent payload with `isMain === true`; snapshot guests staying online must not become the owner fallback.
 - `frontend/game.js:normalizeBackendAgentPayload()` should own alias-vs-name precedence for backend agent labels; prefer a non-empty `alias` before `name` there so snapshot and SSE agent rendering stay aligned.
 - `frontend/game.js:normalizeBackendAgentPayload()` should also own the shared presence fallback: when backend payloads omit `authStatus` but include boolean `online`, derive `approved` for `true` and `offline` for `false` there so snapshot and SSE styling stay consistent.
 - `frontend/game.js` should normalize compat `/agents` response entries through `normalizeBackendAgentPayload()` before slot assignment and `reconcileOfficeAgentsFromPayload()`, otherwise polling can drift from snapshot/SSE label and presence styling.
@@ -252,4 +253,13 @@
   - Patterns discovered: Polling `/agents` payloads need the same normalization pass as snapshot and SSE data before they reach `reconcileOfficeAgentsFromPayload()`, or label/auth styling can drift between sync modes.
   - Gotchas encountered: `getOfficeAgentsFromStateSnapshot()` was still overriding the shared name fallback and could collapse a valid backend `name` to `Agent`, even though incremental SSE updates already showed the correct visible name.
   - Useful context: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+---
+## 2026-03-23 03:55:10 UTC - T-006
+- Restricted snapshot main-agent selection in `frontend/game.js` to payloads with `isMain === true`, so online guest agents no longer become the Star owner fallback.
+- Added frontend regressions for the no-main snapshot path and the explicit-main selection path.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Snapshot ownership should be driven only by the explicit `isMain` flag, not by online presence ordering.
+  - Gotchas encountered: VM-evaluated helper return values in `test/frontend-normalization.test.mjs` compare best by field assertions rather than object deep-equality against host-context literals.
+  - Useful context: `applySceneStateEvent()` consumes `getMainAgentPayloadFromStateSnapshot()` directly, so returning `null` here is the clean way to leave Star idle when the snapshot contains only guest agents.
 ---

@@ -584,7 +584,7 @@ function getMainAgentPayloadFromStateSnapshot(snapshotAgents) {
   if (availableAgents.length === 0) return null;
 
   // Audit note: this helper is the current state-snapshot main-agent selector.
-  const mainAgent = availableAgents.find(agent => agent.online) || availableAgents[0];
+  const mainAgent = availableAgents.find(agent => agent.isMain === true);
   if (!mainAgent) return null;
 
   return {
