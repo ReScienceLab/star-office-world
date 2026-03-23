@@ -18,12 +18,13 @@ frontend:
   dir: ./frontend
 
 env:
-  - name: STAR_OFFICE_WORLD_ID
+  # Platform-injected on AgentWorlds; required for standalone deployment
+  - name: WORLD_ID
     required: true
-    description: "Unique world identifier, e.g. my-office"
-  - name: STAR_OFFICE_GATEWAY_URLS
+    description: "Unique world identifier (auto-injected by platform)"
+  - name: GATEWAY_URL
     required: true
-    description: "AWN Gateway URL(s), comma-separated"
+    description: "AWN Gateway URL (auto-injected by platform)"
   - name: STAR_OFFICE_NAME
     required: false
     description: "Office display name (default: Star Office)"
