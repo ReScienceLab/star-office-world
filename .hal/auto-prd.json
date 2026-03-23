@@ -129,8 +129,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Expanded `test/frontend-normalization.test.mjs` so the acceptance criteria are explicit in the frontend suite: separate SSE regressions now cover alias-first normalization for both `agent_join` and `agent_update`, an SSE-level auth fallback regression covers `online: true` and `online: false` when `authStatus` is absent, and snapshot ownership coverage continues to assert that `getMainAgentPayloadFromStateSnapshot()` returns `null` when no agent has `isMain === true`."
     },
     {
       "id": "T-010",

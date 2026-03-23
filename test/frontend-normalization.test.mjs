@@ -113,13 +113,19 @@ test("normalizeBackendAgentPayload preserves explicit authStatus over online fal
   assert.equal(payload.authStatus, "rejected");
 });
 
-test("parseSSEEventPayload uses alias-first names for agent_join and agent_update", () => {
+test("parseSSEEventPayload prefers alias-first names for agent_join payloads", () => {
   const joinEvent = context.parseSSEEventPayload("agent_join", JSON.stringify({
     agentId: "agent-3",
     alias: "Lobster-Join",
     name: "Guest",
     state: "idle"
   }));
+
+  assert.equal(joinEvent.payload.name, "Lobster-Join");
+  assert.equal(joinEvent.payload.state, "idle");
+});
+
+test("parseSSEEventPayload prefers alias-first names for agent_update payloads", () => {
   const updateEvent = context.parseSSEEventPayload("agent_update", JSON.stringify({
     agentId: "agent-3",
     alias: "Lobster-Update",
@@ -127,9 +133,26 @@ test("parseSSEEventPayload uses alias-first names for agent_join and agent_updat
     state: "working"
   }));
 
-  assert.equal(joinEvent.payload.name, "Lobster-Join");
   assert.equal(updateEvent.payload.name, "Lobster-Update");
   assert.equal(updateEvent.payload.state, "writing");
+});
+
+test("parseSSEEventPayload preserves online fallback auth mapping for agent_join and agent_update", () => {
+  const joinEvent = context.parseSSEEventPayload("agent_join", JSON.stringify({
+    agentId: "agent-join-online",
+    alias: "Join Online",
+    online: true,
+    state: "idle"
+  }));
+  const updateEvent = context.parseSSEEventPayload("agent_update", JSON.stringify({
+    agentId: "agent-update-offline",
+    alias: "Update Offline",
+    online: false,
+    state: "idle"
+  }));
+
+  assert.equal(joinEvent.payload.authStatus, "approved");
+  assert.equal(updateEvent.payload.authStatus, "offline");
 });
 
 test("snapshot office agents preserve normalized name fallback and presence styling", () => {

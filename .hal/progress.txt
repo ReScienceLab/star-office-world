@@ -2,6 +2,7 @@
 
 ## Codebase Patterns
 
+- `test/frontend-normalization.test.mjs` should extract individual helpers from `frontend/game.js` into a VM context for Node-side regressions, because the browser bundle depends on top-level `Phaser` globals and is not directly importable in tests.
 - `src/ui-routes.ts:/status` should derive owner payloads only from snapshot agents with `isMain === true`; if none exist, return the idle `Waiting...` payload instead of mirroring an online guest.
 - `frontend/game.js:applySceneStateEvent()` should always pair guest-office reconciliation with an explicit owner payload update; when a snapshot has no `isMain === true` agent, send the Star UI through the shared idle fallback instead of leaving the previous owner state latched.
 - `frontend/game.js:getMainAgentPayloadFromStateSnapshot()` should only derive Star ownership from an agent payload with `isMain === true`; snapshot guests staying online must not become the owner fallback.
@@ -282,4 +283,13 @@
   - Patterns discovered: The compat `/status` route should stay aligned with frontend ownership logic and treat `isMain` on the public snapshot as the only valid owner selector.
   - Gotchas encountered: `isMain` is not part of the canonical `OfficeAgent` type, so route code that reads it from `getPublicState()` snapshots needs an explicit snapshot-side type narrowing.
   - Useful context: Fastify route regressions can stub `getState()` directly with snapshot-shaped agents that include `isMain`, which is enough to test compat ownership behavior without booting the full world server.
+---
+## 2026-03-23 04:04:25 UTC - T-009
+- Tightened `test/frontend-normalization.test.mjs` so the frontend regression suite now states the normalization contract directly: alias-first parsing is asserted separately for `agent_join` and `agent_update`, and SSE-level `online` fallback coverage now checks both approved and offline auth mapping when `authStatus` is absent.
+- Re-ran the frontend-targeted syntax check and the full project quality gate after the regression updates.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Node-side frontend regression tests should keep acceptance criteria explicit in `test/frontend-normalization.test.mjs` instead of hiding multiple SSE contracts inside one broad assertion, which makes future payload regressions easier to localize.
+  - Gotchas encountered: Because `frontend/game.js` is exercised by extracting helpers into a VM context, SSE normalization regressions are easiest to express as field-level assertions on the parsed payload rather than end-to-end scene imports.
+  - Useful context: Validation for this frontend-only test story used `node --check frontend/game.js`, `npm test`, and `npm run lint`; browser verification was not required because no UI code changed.
 ---
