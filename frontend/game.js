@@ -486,9 +486,12 @@ function normalizeBackendAgentPayload(rawAgent, options = {}) {
   if (!agentId) return null;
 
   const area = typeof rawAgent.area === 'string' ? rawAgent.area : 'breakroom';
+  const alias = typeof rawAgent.alias === 'string' ? rawAgent.alias : '';
   const name = typeof options.getName === 'function'
     ? options.getName(rawAgent)
-    : typeof rawAgent.name === 'string'
+    : alias
+      ? alias
+      : typeof rawAgent.name === 'string'
       ? rawAgent.name
       : 'Agent';
   const authStatus = typeof options.getAuthStatus === 'function'

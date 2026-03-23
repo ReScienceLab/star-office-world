@@ -43,8 +43,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated `frontend/game.js:normalizeBackendAgentPayload()` to prefer a non-empty backend `alias` before `name` when no source-specific override is supplied, which brings SSE `agent_join` and `agent_update` payload normalization in line with snapshot rendering. Added `test/frontend-normalization.test.mjs` to assert alias-first normalization, name fallback when alias is absent, and the shared SSE event parsing path for both incremental agent events."
     },
     {
       "id": "T-004",
