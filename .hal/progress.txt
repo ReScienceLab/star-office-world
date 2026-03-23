@@ -20,6 +20,7 @@
 - `frontend/game.js` should route incremental `agent_join`/`agent_update`/`agent_leave`/`agent_offline` events through `applyOfficeAgentStreamEvent()` plus `assignOfficeAgentSlot()` so live SSE updates preserve existing area slots, reuse the shared office-agent lifecycle helpers, and avoid creating ghost offline agents.
 - `frontend/game.js` should gate recurring `/status` and `/agents` polling through `shouldUsePollingSync(scene)`, which reads `scene.sseSync.usePollingFallback` so healthy SSE suppresses duplicate fetches and degraded SSE restores both polling loops from one switch.
 - `frontend/game.js` should treat `/ui/events` teardown as a first-class scene lifecycle concern: bind one shutdown/destroy cleanup path that removes stored EventSource listeners, closes the active stream, clears reconnect timers, and only creates a fresh EventSource after `readyState === CLOSED`.
+- For the current SSE ownership bug surface, `frontend/game.js:getOfficeAgentsFromStateSnapshot()` is the initial snapshot normalization path, `parseSSEAgentPayload()` is the incremental `agent_join`/`agent_update` normalization path, `getMainAgentPayloadFromStateSnapshot()` is the snapshot main-agent selector, and `src/ui-routes.ts:/status` owns the idle fallback behavior.
 
 ---
 
@@ -203,4 +204,12 @@
   - Patterns discovered: Frontend SSE lifecycle code should keep listener functions on `scene.sseSync` so teardown can remove them before closing the EventSource and reconnecting cleanly.
   - Gotchas encountered: Browser `EventSource` can emit `error` during transient reconnects without reaching `CLOSED`, so fallback should turn on immediately, but only fully replace the stream when `readyState === CLOSED`.
   - Useful context: Browser verification was skipped because this workspace still has no browser verification skill installed, so this frontend iteration relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+---
+## 2026-03-23 03:42:40 UTC - T-001
+- Audited and documented the active normalization and ownership entry points for snapshot agent mapping, incremental SSE agent payload handling, snapshot main-agent selection, and the backend `/status` idle fallback.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `src/ui-routes.ts`
+- **Learnings for future iterations:**
+  - Patterns discovered: Initial snapshot office-agent normalization and incremental SSE agent normalization already use separate helpers in `frontend/game.js`, so the next normalization refactor should converge those two paths rather than adding a third mapper.
+  - Gotchas encountered: `getMainAgentPayloadFromStateSnapshot()` and the `/status` route still infer ownership from online presence instead of an explicit `isMain` flag, which is the current regression surface for guest-agent takeover.
+  - Useful context: `/ui/events` `state` snapshots enter through `applySceneStateEvent()`, which calls both `getMainAgentPayloadFromStateSnapshot()` and `getOfficeAgentsFromStateSnapshot()`, so ownership and office-agent rendering diverge from one shared snapshot payload.
 ---

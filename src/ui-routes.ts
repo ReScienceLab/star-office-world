@@ -96,6 +96,8 @@ export function registerUIRoutes(
   fastify.get("/status", async () => {
     const state = getState();
     const agents = Object.values(state.agents);
+    // Audit note: this fallback currently mirrors the first online agent,
+    // then the first available agent, and only returns idle when none exist.
     const mainAgent = agents.find((a) => a.online) ?? agents[0];
     if (!mainAgent) {
       return {

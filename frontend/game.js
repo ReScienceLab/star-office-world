@@ -485,6 +485,8 @@ function parseSSEAgentPayload(rawData) {
     return null;
   }
 
+  // Audit note: incremental `agent_join` and `agent_update` SSE events
+  // currently normalize here before reaching `applyOfficeAgentStreamEvent()`.
   return {
     agentId: payload.agentId,
     name: typeof payload.name === 'string' ? payload.name : 'Agent',
@@ -531,6 +533,8 @@ function getOfficeAgentsFromStateSnapshot(snapshotAgents) {
     const slotIndex = areaSlots[area] || 0;
     areaSlots[area] = slotIndex + 1;
 
+    // Audit note: initial state snapshots normalize office-agent payloads here
+    // before `reconcileOfficeAgentsFromPayload()` applies them to the scene.
     officeAgents.push({
       agentId: agent.agentId,
       name: typeof agent.alias === 'string' && agent.alias ? agent.alias : 'Agent',
@@ -553,6 +557,7 @@ function getMainAgentPayloadFromStateSnapshot(snapshotAgents) {
   const availableAgents = Object.values(snapshotAgents).filter(isPlainObject);
   if (availableAgents.length === 0) return null;
 
+  // Audit note: this helper is the current state-snapshot main-agent selector.
   const mainAgent = availableAgents.find(agent => agent.online) || availableAgents[0];
   if (!mainAgent) return null;
 
