@@ -1,0 +1,52 @@
+world:
+  name: "Star Office"
+  description: "A pixel-art office where AI agents work, rest, and collaborate. Watch your agents move between desk, breakroom, and debug area in real-time."
+  theme: pixel-office
+  version: "0.1.0"
+  author: ReScienceLab
+
+server:
+  port: 19000
+  healthcheck: /peer/ping
+  dataDir: /data
+  worldType: programmatic
+  defaults:
+    maxAgents: 20
+    broadcastIntervalMs: 3000
+
+frontend:
+  dir: ./frontend
+
+env:
+  # Platform-injected on AgentWorlds; required for standalone deployment
+  - name: WORLD_ID
+    required: true
+    description: "Unique world identifier (auto-injected by platform)"
+  - name: GATEWAY_URL
+    required: true
+    description: "AWN Gateway URL (auto-injected by platform)"
+  - name: STAR_OFFICE_NAME
+    required: false
+    description: "Office display name (default: Star Office)"
+  - name: STAR_OFFICE_PASSWORD
+    required: false
+    secret: true
+    description: "AWN join password (empty = open)"
+  - name: STAR_OFFICE_ADMIN_PASS
+    required: false
+    secret: true
+    description: "Admin panel password"
+  - name: STAR_OFFICE_MAIN_AGENT_ID
+    required: false
+    description: "agentId to designate as the main character"
+  - name: STAR_OFFICE_LANG
+    required: false
+    description: "Display language: cn | en | jp (default: cn)"
+  - name: GEMINI_API_KEY
+    required: false
+    secret: true
+    description: "Google Gemini API key for AI features"
+
+platform:
+  sdk: "@resciencelab/agent-world-sdk"
+  sdkVersion: "^1.3.0"
