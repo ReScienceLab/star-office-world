@@ -479,23 +479,52 @@ function parseSSEStatePayload(rawData) {
   };
 }
 
-function parseSSEAgentPayload(rawData) {
-  const payload = safeParseSSEJSON(rawData);
-  if (!payload || typeof payload.agentId !== 'string' || !payload.agentId.trim()) {
-    return null;
-  }
+function normalizeBackendAgentPayload(rawAgent, options = {}) {
+  if (!isPlainObject(rawAgent)) return null;
+
+  const agentId = typeof rawAgent.agentId === 'string' ? rawAgent.agentId.trim() : '';
+  if (!agentId) return null;
+
+  const area = typeof rawAgent.area === 'string' ? rawAgent.area : 'breakroom';
+  const alias = typeof rawAgent.alias === 'string' ? rawAgent.alias : '';
+  const name = typeof options.getName === 'function'
+    ? options.getName(rawAgent)
+    : alias
+      ? alias
+      : typeof rawAgent.name === 'string'
+      ? rawAgent.name
+      : 'Agent';
+  const authStatus = typeof options.getAuthStatus === 'function'
+    ? options.getAuthStatus(rawAgent)
+    : typeof rawAgent.authStatus === 'string'
+      ? rawAgent.authStatus
+      : typeof rawAgent.online === 'boolean'
+        ? rawAgent.online ? 'approved' : 'offline'
+      : 'pending';
+  const updatedAt = typeof options.getUpdatedAt === 'function'
+    ? options.getUpdatedAt(rawAgent)
+    : rawAgent.updated_at;
 
   return {
-    agentId: payload.agentId,
-    name: typeof payload.name === 'string' ? payload.name : 'Agent',
-    isMain: !!payload.isMain,
-    state: normalizeState(payload.state),
-    detail: typeof payload.detail === 'string' ? payload.detail : '',
-    area: typeof payload.area === 'string' ? payload.area : 'breakroom',
-    authStatus: typeof payload.authStatus === 'string' ? payload.authStatus : 'pending',
-    updated_at: payload.updated_at,
-    raw: payload
+    agentId,
+    name: typeof name === 'string' && name ? name : 'Agent',
+    isMain: !!rawAgent.isMain,
+    state: normalizeState(rawAgent.state),
+    detail: typeof rawAgent.detail === 'string' ? rawAgent.detail : '',
+    area,
+    authStatus: typeof authStatus === 'string' ? authStatus : 'pending',
+    updated_at: updatedAt,
+    raw: rawAgent
   };
+}
+
+function parseSSEAgentPayload(rawData) {
+  const payload = safeParseSSEJSON(rawData);
+  if (!payload) return null;
+
+  // Audit note: incremental `agent_join` and `agent_update` SSE events
+  // currently normalize here before reaching `applyOfficeAgentStreamEvent()`.
+  return normalizeBackendAgentPayload(payload);
 }
 
 function parseSSEEventPayload(eventType, rawData) {
@@ -523,23 +552,24 @@ function getOfficeAgentsFromStateSnapshot(snapshotAgents) {
   const officeAgents = [];
   const areaSlots = { breakroom: 0, writing: 0, error: 0 };
   for (const agent of Object.values(snapshotAgents)) {
-    if (!isPlainObject(agent) || typeof agent.agentId !== 'string' || !agent.agentId.trim()) {
+    const normalizedAgent = normalizeBackendAgentPayload(agent, {
+      getUpdatedAt: (snapshotAgent) => typeof snapshotAgent.lastSeenAt === 'number'
+        ? new Date(snapshotAgent.lastSeenAt).toISOString()
+        : undefined
+    });
+    if (!normalizedAgent) {
       continue;
     }
 
-    const area = typeof agent.area === 'string' ? agent.area : 'breakroom';
+    const area = normalizedAgent.area;
     const slotIndex = areaSlots[area] || 0;
     areaSlots[area] = slotIndex + 1;
 
+    // Audit note: initial state snapshots normalize office-agent payloads here
+    // before `reconcileOfficeAgentsFromPayload()` applies them to the scene.
     officeAgents.push({
-      agentId: agent.agentId,
-      name: typeof agent.alias === 'string' && agent.alias ? agent.alias : 'Agent',
+      ...normalizedAgent,
       isMain: false,
-      state: normalizeState(agent.state),
-      detail: typeof agent.detail === 'string' ? agent.detail : '',
-      updated_at: typeof agent.lastSeenAt === 'number' ? new Date(agent.lastSeenAt).toISOString() : undefined,
-      area,
-      authStatus: agent.online ? 'approved' : 'offline',
       _slotIndex: slotIndex
     });
   }
@@ -553,12 +583,20 @@ function getMainAgentPayloadFromStateSnapshot(snapshotAgents) {
   const availableAgents = Object.values(snapshotAgents).filter(isPlainObject);
   if (availableAgents.length === 0) return null;
 
-  const mainAgent = availableAgents.find(agent => agent.online) || availableAgents[0];
+  // Audit note: this helper is the current state-snapshot main-agent selector.
+  const mainAgent = availableAgents.find(agent => agent.isMain === true);
   if (!mainAgent) return null;
 
   return {
     state: normalizeState(mainAgent.state),
     detail: typeof mainAgent.detail === 'string' ? mainAgent.detail : '...'
+  };
+}
+
+function getIdleMainAgentPayload() {
+  return {
+    state: 'idle',
+    detail: 'Waiting...'
   };
 }
 
@@ -641,10 +679,8 @@ function reconcileOfficeAgentsFromPayload(agentPayloads) {
 function applySceneStateEvent(scene, statePayload) {
   if (!scene || !statePayload || !isPlainObject(statePayload.agents)) return;
 
-  const mainAgentPayload = getMainAgentPayloadFromStateSnapshot(statePayload.agents);
-  if (mainAgentPayload) {
-    applyMainAgentPayload(mainAgentPayload);
-  }
+  const mainAgentPayload = getMainAgentPayloadFromStateSnapshot(statePayload.agents) || getIdleMainAgentPayload();
+  applyMainAgentPayload(mainAgentPayload);
 
   reconcileOfficeAgentsFromPayload(getOfficeAgentsFromStateSnapshot(statePayload.agents));
 }
@@ -1339,15 +1375,18 @@ function fetchAgents() {
     .then(response => response.json())
     .then(data => {
       if (!Array.isArray(data)) return;
+      const normalizedAgents = data
+        .map(agent => normalizeBackendAgentPayload(agent))
+        .filter(Boolean);
       // 重置位置计数器
       // 按区域分配不同位置索引，避免重叠
       const areaSlots = { breakroom: 0, writing: 0, error: 0 };
-      for (let agent of data) {
+      for (const agent of normalizedAgents) {
         const area = agent.area || 'breakroom';
         agent._slotIndex = areaSlots[area] || 0;
         areaSlots[area] = (areaSlots[area] || 0) + 1;
       }
-      reconcileOfficeAgentsFromPayload(data);
+      reconcileOfficeAgentsFromPayload(normalizedAgents);
     })
     .catch(error => {
       console.error('拉取 agents 失败:', error);

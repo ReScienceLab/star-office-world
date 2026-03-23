@@ -2,6 +2,14 @@
 
 ## Codebase Patterns
 
+- `test/frontend-normalization.test.mjs` should extract individual helpers from `frontend/game.js` into a VM context for Node-side regressions, because the browser bundle depends on top-level `Phaser` globals and is not directly importable in tests.
+- `src/ui-routes.ts:/status` should derive owner payloads only from snapshot agents with `isMain === true`; if none exist, return the idle `Waiting...` payload instead of mirroring an online guest.
+- `frontend/game.js:applySceneStateEvent()` should always pair guest-office reconciliation with an explicit owner payload update; when a snapshot has no `isMain === true` agent, send the Star UI through the shared idle fallback instead of leaving the previous owner state latched.
+- `frontend/game.js:getMainAgentPayloadFromStateSnapshot()` should only derive Star ownership from an agent payload with `isMain === true`; snapshot guests staying online must not become the owner fallback.
+- `frontend/game.js:normalizeBackendAgentPayload()` should own alias-vs-name precedence for backend agent labels; prefer a non-empty `alias` before `name` there so snapshot and SSE agent rendering stay aligned.
+- `frontend/game.js:normalizeBackendAgentPayload()` should also own the shared presence fallback: when backend payloads omit `authStatus` but include boolean `online`, derive `approved` for `true` and `offline` for `false` there so snapshot and SSE styling stay consistent.
+- `frontend/game.js` should normalize compat `/agents` response entries through `normalizeBackendAgentPayload()` before slot assignment and `reconcileOfficeAgentsFromPayload()`, otherwise polling can drift from snapshot/SSE label and presence styling.
+- `frontend/game.js` should normalize backend agent-shaped payloads through `normalizeBackendAgentPayload(rawAgent, options)` and layer snapshot-specific field sources such as alias, online-derived presence, and `lastSeenAt` timestamps through the helper's option callbacks instead of duplicating object mapping logic.
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
 - `getPublicState()` must deep-copy nested collections (`agents`, `rooms`, memos, config/background objects) before returning snapshots; shallow copies expose live state to REST/SSE callers.
 - The test suite imports built files from `dist/`; keep `npm test` responsible for rebuilding first so contributors and CI always run tests against fresh output.
@@ -16,10 +24,11 @@
 - `frontend/game.js` should route remote office-agent payloads through `applyOfficeAgentPayload(agent)`, which delegates to shared `createOfficeAgent()`, `updateOfficeAgent()`, `removeOfficeAgent()`, and `markOfficeAgentOffline()` helpers so polling and future SSE events do not duplicate sprite lifecycle logic.
 - `frontend/game.js` should keep SSE transport health on the scene-owned `sseSync` object and funnel raw `/ui/events` payloads through `parseSSEEventPayload(eventType, rawData)` so malformed JSON and partial agent events degrade safely to `null`.
 - `frontend/game.js` should open `/ui/events` only through `connectOfficeEventStream(scene)` during `create()`, with `registerOfficeEventStream()` owning the `open`/`error` health transitions so later SSE state and agent handlers reuse the same lifecycle-managed EventSource.
-- `frontend/game.js` should treat the `/ui/events` `state` event as a full `getPublicState()` snapshot: derive the main-agent status from the first online agent (or first available agent), then translate `state.agents` back through `reconcileOfficeAgentsFromPayload()` instead of assuming the `/status` or `/agents` response shapes.
+- `frontend/game.js` should treat the `/ui/events` `state` event as a full `getPublicState()` snapshot: derive main-agent status only from an explicit `isMain === true` agent or fall back to the shared idle owner payload, then translate `state.agents` back through `reconcileOfficeAgentsFromPayload()` instead of assuming the `/status` or `/agents` response shapes.
 - `frontend/game.js` should route incremental `agent_join`/`agent_update`/`agent_leave`/`agent_offline` events through `applyOfficeAgentStreamEvent()` plus `assignOfficeAgentSlot()` so live SSE updates preserve existing area slots, reuse the shared office-agent lifecycle helpers, and avoid creating ghost offline agents.
 - `frontend/game.js` should gate recurring `/status` and `/agents` polling through `shouldUsePollingSync(scene)`, which reads `scene.sseSync.usePollingFallback` so healthy SSE suppresses duplicate fetches and degraded SSE restores both polling loops from one switch.
 - `frontend/game.js` should treat `/ui/events` teardown as a first-class scene lifecycle concern: bind one shutdown/destroy cleanup path that removes stored EventSource listeners, closes the active stream, clears reconnect timers, and only creates a fresh EventSource after `readyState === CLOSED`.
+- For the current SSE ownership bug surface, `frontend/game.js:getOfficeAgentsFromStateSnapshot()` is the initial snapshot normalization path, `parseSSEAgentPayload()` is the incremental `agent_join`/`agent_update` normalization path, `getMainAgentPayloadFromStateSnapshot()` is the snapshot main-agent selector, and `src/ui-routes.ts:/status` owns the idle fallback behavior.
 
 ---
 
@@ -203,4 +212,93 @@
   - Patterns discovered: Frontend SSE lifecycle code should keep listener functions on `scene.sseSync` so teardown can remove them before closing the EventSource and reconnecting cleanly.
   - Gotchas encountered: Browser `EventSource` can emit `error` during transient reconnects without reaching `CLOSED`, so fallback should turn on immediately, but only fully replace the stream when `readyState === CLOSED`.
   - Useful context: Browser verification was skipped because this workspace still has no browser verification skill installed, so this frontend iteration relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+---
+## 2026-03-23 03:42:40 UTC - T-001
+- Audited and documented the active normalization and ownership entry points for snapshot agent mapping, incremental SSE agent payload handling, snapshot main-agent selection, and the backend `/status` idle fallback.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `src/ui-routes.ts`
+- **Learnings for future iterations:**
+  - Patterns discovered: Initial snapshot office-agent normalization and incremental SSE agent normalization already use separate helpers in `frontend/game.js`, so the next normalization refactor should converge those two paths rather than adding a third mapper.
+  - Gotchas encountered: `getMainAgentPayloadFromStateSnapshot()` and the `/status` route still infer ownership from online presence instead of an explicit `isMain` flag, which is the current regression surface for guest-agent takeover.
+  - Useful context: `/ui/events` `state` snapshots enter through `applySceneStateEvent()`, which calls both `getMainAgentPayloadFromStateSnapshot()` and `getOfficeAgentsFromStateSnapshot()`, so ownership and office-agent rendering diverge from one shared snapshot payload.
+---
+## 2026-03-23 03:44:32 UTC - T-002
+- Added `normalizeBackendAgentPayload(rawAgent, options)` in `frontend/game.js` as the shared frontend normalization entry point for backend agent payloads.
+- Rewired snapshot normalization in `getOfficeAgentsFromStateSnapshot()` and SSE `agent_join`/`agent_update` normalization in `parseSSEAgentPayload()` to call the same helper, while preserving the current snapshot-specific alias, auth, and timestamp derivation through callbacks.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`
+- **Learnings for future iterations:**
+  - Patterns discovered: Snapshot and SSE agent payloads should share the same normalizer, with source-specific field derivation passed in as callbacks instead of open-coded object construction.
+  - Gotchas encountered: Browser verification was skipped for this frontend story because no local dev server was running, even though a browser automation skill is installed.
+  - Useful context: `normalizeBackendAgentPayload()` is now the narrow place to adjust future alias-preference and online-to-auth fallback behavior without touching both snapshot and SSE parsing separately.
+---
+## 2026-03-23 03:47:42 UTC - T-003
+- Updated `frontend/game.js` so shared backend agent normalization prefers a non-empty `alias` before `name`, aligning incremental SSE `agent_join` and `agent_update` labels with snapshot rendering.
+- Added `test/frontend-normalization.test.mjs` to cover alias-first normalization, name fallback when alias is absent, and the shared SSE event parsing path for both incremental agent events.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Frontend label selection should stay centralized in `normalizeBackendAgentPayload()` so snapshot and SSE code paths cannot drift on alias/name precedence.
+  - Gotchas encountered: Because `frontend/game.js` is a browser script with top-level `Phaser` globals, Node-side frontend regressions are easiest to cover by extracting and evaluating the specific helper functions instead of importing the whole file.
+  - Useful context: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+---
+## 2026-03-23 03:49:58 UTC - T-004
+- Updated `frontend/game.js` so shared backend agent normalization derives `authStatus` from boolean `online` when the backend payload omits `authStatus`, while still preserving any explicit backend `authStatus`.
+- Extended `test/frontend-normalization.test.mjs` with regressions for online-to-auth fallback and explicit `authStatus` precedence.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Presence fallback should stay centralized in `normalizeBackendAgentPayload()` so snapshot and SSE payloads cannot drift on approved/offline styling when `authStatus` is absent.
+  - Gotchas encountered: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+  - Useful context: Snapshot normalization no longer needs a bespoke `getAuthStatus` callback just to mirror `online`; the shared normalizer now handles that default for any backend agent-shaped payload.
+---
+## 2026-03-23 03:52:34 UTC - T-005
+- Updated `frontend/game.js` so office-agent rendering consumes normalized payloads on every frontend path: snapshot agents now keep the shared alias-or-name fallback, and `/agents` polling normalizes backend payloads before slot assignment and reconciliation.
+- Extended `test/frontend-normalization.test.mjs` with regressions that lock snapshot presence styling to the normalized `approved` and `offline` auth states and verify snapshot payloads match incremental SSE name/auth normalization.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Polling `/agents` payloads need the same normalization pass as snapshot and SSE data before they reach `reconcileOfficeAgentsFromPayload()`, or label/auth styling can drift between sync modes.
+  - Gotchas encountered: `getOfficeAgentsFromStateSnapshot()` was still overriding the shared name fallback and could collapse a valid backend `name` to `Agent`, even though incremental SSE updates already showed the correct visible name.
+  - Useful context: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+---
+## 2026-03-23 03:55:10 UTC - T-006
+- Restricted snapshot main-agent selection in `frontend/game.js` to payloads with `isMain === true`, so online guest agents no longer become the Star owner fallback.
+- Added frontend regressions for the no-main snapshot path and the explicit-main selection path.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Snapshot ownership should be driven only by the explicit `isMain` flag, not by online presence ordering.
+  - Gotchas encountered: VM-evaluated helper return values in `test/frontend-normalization.test.mjs` compare best by field assertions rather than object deep-equality against host-context literals.
+  - Useful context: `applySceneStateEvent()` consumes `getMainAgentPayloadFromStateSnapshot()` directly, so returning `null` here is the clean way to leave Star idle when the snapshot contains only guest agents.
+---
+## 2026-03-23 03:58:14 UTC - T-007
+- Updated `frontend/game.js` so SSE `state` snapshots keep guest office-agent reconciliation active while forcing the Star owner UI back to the shared idle payload when no snapshot agent is marked `isMain`.
+- Added a frontend regression that verifies a guest-only writing snapshot still reconciles the guest into the writing area and resets the owner payload to idle with `Waiting...` detail.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Snapshot handlers need to apply owner fallback and guest-agent reconciliation together; skipping the owner update leaves stale Star UI state even when guest movement is correct.
+  - Gotchas encountered: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+  - Useful context: `getIdleMainAgentPayload()` now centralizes the frontend idle-owner fallback used by SSE snapshots, matching the current compat `/status` idle detail text.
+---
+## 2026-03-23 04:01:52 UTC - T-008
+- Updated `src/ui-routes.ts:/status` so the compat owner payload now comes only from an agent snapshot with `isMain === true`; when no main agent exists, the route returns the idle `Waiting...` owner payload instead of mirroring the first online guest.
+- Added backend route regressions in `test/ui-routes.test.mjs` for both the no-main idle fallback and the explicit-main success path.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/ui-routes.ts`, `test/ui-routes.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: The compat `/status` route should stay aligned with frontend ownership logic and treat `isMain` on the public snapshot as the only valid owner selector.
+  - Gotchas encountered: `isMain` is not part of the canonical `OfficeAgent` type, so route code that reads it from `getPublicState()` snapshots needs an explicit snapshot-side type narrowing.
+  - Useful context: Fastify route regressions can stub `getState()` directly with snapshot-shaped agents that include `isMain`, which is enough to test compat ownership behavior without booting the full world server.
+---
+## 2026-03-23 04:04:25 UTC - T-009
+- Tightened `test/frontend-normalization.test.mjs` so the frontend regression suite now states the normalization contract directly: alias-first parsing is asserted separately for `agent_join` and `agent_update`, and SSE-level `online` fallback coverage now checks both approved and offline auth mapping when `authStatus` is absent.
+- Re-ran the frontend-targeted syntax check and the full project quality gate after the regression updates.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Node-side frontend regression tests should keep acceptance criteria explicit in `test/frontend-normalization.test.mjs` instead of hiding multiple SSE contracts inside one broad assertion, which makes future payload regressions easier to localize.
+  - Gotchas encountered: Because `frontend/game.js` is exercised by extracting helpers into a VM context, SSE normalization regressions are easiest to express as field-level assertions on the parsed payload rather than end-to-end scene imports.
+  - Useful context: Validation for this frontend-only test story used `node --check frontend/game.js`, `npm test`, and `npm run lint`; browser verification was not required because no UI code changed.
+---
+## 2026-03-23 04:05:39 UTC - T-010
+- Recorded the existing backend `/status` route regressions as the completion for this story: `test/ui-routes.test.mjs` verifies the idle `Waiting...` fallback when no snapshot agent has `isMain === true`, and preserves the owner payload when a main agent exists.
+- Re-ran the full project quality gate to confirm the backend coverage still passes with the current route behavior.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Backend compat route acceptance criteria can stay explicit in `test/ui-routes.test.mjs` by stubbing `getState()` with snapshot-shaped agents and asserting the exact `/status` JSON payload.
+  - Gotchas encountered: This story was already implemented in the workspace but had not been marked complete in the PRD, so finishing the iteration required validation plus tracking-file updates rather than more code changes.
+  - Useful context: Validation for this backend-only story used `npm test` and `npm run lint`; no browser verification applied because no frontend code changed.
 ---

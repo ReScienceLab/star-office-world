@@ -1,135 +1,150 @@
 {
-  "project": "frontend-sse-agent-sync",
-  "branchName": "compound/implement-frontend-sse-agent-sync",
-  "description": "Replace polling-based agent and status synchronization in frontend/game.js with a single SSE connection to /ui/events while preserving fetch-based fallback behavior.",
+  "project": "Fix SSE Agent Payload Normalization and Main-Character Ownership Handling",
+  "branchName": "compound/fix-sse-agent-payload-and-main-agent-handling",
+  "description": "Normalize frontend agent payloads, restrict Star ownership to explicit main agents, and return an idle owner state from /status when no main agent exists.",
   "userStories": [
     {
       "id": "T-001",
-      "title": "Inventory existing sync entry points in game.js",
-      "description": "As a developer, I need the current polling-based status and agent sync entry points mapped so that the SSE refactor only changes the required paths in frontend/game.js.",
+      "title": "Audit normalization and ownership code paths",
+      "description": "As a developer, I need to identify the exact frontend and backend entry points for payload normalization, main-agent selection, and /status fallback so that follow-on tasks change the correct minimal surfaces.",
       "acceptanceCriteria": [
-        "frontend/game.js includes implementation notes or task comments identifying the current fetchStatus() and fetchAgents() callers",
-        "The ownership boundary for main-agent status updates, office-agent updates, and fallback activation is documented in the same file or adjacent task notes",
+        "Implementation notes identify the frontend function or block used for initial snapshot agent normalization",
+        "Implementation notes identify the SSE handling path for agent_join and agent_update payloads",
+        "Implementation notes identify the function responsible for selecting the main agent from the state snapshot",
+        "Implementation notes identify the backend /status fallback path used when no main agent exists",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Documented the current polling sync entry points directly in frontend/game.js, including the bootstrap callers in create(), the recurring callers in update(), the setState() one-shot fetchStatus() refresh, and the ownership boundary between main-agent status updates, office-agent rendering, and future SSE fallback gating."
+      "notes": "Frontend initial snapshot normalization currently happens in frontend/game.js:getOfficeAgentsFromStateSnapshot(), which maps state.agents entries before reconcileOfficeAgentsFromPayload(). SSE agent_join and agent_update payloads currently normalize in frontend/game.js:parseSSEAgentPayload(), then flow through parseSSEEventPayload() into applyOfficeAgentStreamEvent(). Main-agent selection from a snapshot currently happens in frontend/game.js:getMainAgentPayloadFromStateSnapshot(). The backend /status idle fallback path currently lives in src/ui-routes.ts inside registerUIRoutes(), where the /status handler picks the first online agent, then the first available agent, and only falls back to idle when no agents exist."
     },
     {
       "id": "T-002",
-      "title": "Extract reusable main-agent apply helper",
-      "description": "As a developer, I need main-agent status application moved into a reusable helper so that SSE state payloads and fallback fetches update the player state through one code path.",
+      "title": "Create a shared frontend agent normalization path",
+      "description": "As a developer, I need a single normalization path for backend agent payloads so that snapshot rendering and SSE updates apply the same field mapping rules.",
       "acceptanceCriteria": [
-        "frontend/game.js defines a helper that applies main-agent state and detail updates from plain payload data rather than a fetch response object",
-        "fetchStatus() delegates main-agent rendering or state mutation to the shared helper",
-        "The shared helper can be called during initial SSE state bootstrap without additional fetch-only assumptions",
+        "frontend/game.js contains one reusable normalization function for backend agent payloads",
+        "Initial snapshot processing calls the shared normalization function",
+        "SSE agent_join and agent_update processing call the same normalization function",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Extracted `applyMainAgentPayload(payload)` in `frontend/game.js` so main-agent state/detail application now works from plain payload data. `fetchStatus()` is reduced to transport plus delegation, and inline notes mark the helper as the shared path for future SSE bootstrap/state events."
+      "notes": "Added `normalizeBackendAgentPayload(rawAgent, options)` in `frontend/game.js` and routed both `getOfficeAgentsFromStateSnapshot()` and `parseSSEAgentPayload()` through it. Snapshot-specific label, auth-status, and timestamp derivation now layer on top of the shared normalizer via callback options, while SSE `agent_join` and `agent_update` keep using the same canonical field mapping entry point."
     },
     {
       "id": "T-003",
-      "title": "Extract reusable office-agent lifecycle helpers",
-      "description": "As a developer, I need office-agent sprite lifecycle logic split into shared helpers so that SSE events and fallback fetches manage remote agents consistently.",
+      "title": "Prefer alias over name for normalized agent labels",
+      "description": "As a user, I need normalized agent payloads to prefer alias before name so that the office UI shows the backend-provided visible identity.",
       "acceptanceCriteria": [
-        "frontend/game.js defines shared helpers for creating, updating, removing, and marking office agents offline from agent payload data",
-        "fetchAgents() uses the shared office-agent helpers instead of duplicating sprite lifecycle logic inline",
-        "Helper inputs are based on agent payload objects and do not depend on fetch-specific control flow",
+        "A payload with alias \"Lobster-1\" and a missing or generic name normalizes to visible name \"Lobster-1\"",
+        "A payload with both alias and name prefers alias for the normalized visible name",
+        "A payload without alias still falls back to name for the normalized visible name",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Extracted shared office-agent helpers in `frontend/game.js` for create, update, remove, offline-marking, and plain-payload application. `fetchAgents()` now delegates to those helpers for payload reconciliation, and the debug agent path reuses the same helper entry point."
+      "notes": "Updated `frontend/game.js:normalizeBackendAgentPayload()` to prefer a non-empty backend `alias` before `name` when no source-specific override is supplied, which brings SSE `agent_join` and `agent_update` payload normalization in line with snapshot rendering. Added `test/frontend-normalization.test.mjs` to assert alias-first normalization, name fallback when alias is absent, and the shared SSE event parsing path for both incremental agent events."
     },
     {
       "id": "T-004",
-      "title": "Add SSE mode state and payload parsing helpers",
-      "description": "As a developer, I need explicit SSE mode flags and defensive payload parsing helpers so that stream health and malformed event handling are centralized before wiring scene integration.",
+      "title": "Map online state into authStatus when absent",
+      "description": "As a user, I need frontend presence normalization to derive authStatus from online when authStatus is missing so that online and offline agents do not render as pending by default.",
       "acceptanceCriteria": [
-        "frontend/game.js defines scene-level state for tracking whether SSE is active or degraded to polling fallback",
-        "frontend/game.js defines helper logic for safely parsing SSE event payloads and ignoring malformed JSON or missing required fields",
-        "Unknown or partial SSE payloads do not throw uncaught exceptions from the shared parsing path",
+        "A normalized payload with online true and no authStatus resolves to the existing online or active frontend auth state",
+        "A normalized payload with online false and no authStatus resolves to the existing offline frontend auth state",
+        "A payload that already includes authStatus preserves the explicit backend authStatus value",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Added scene-owned `sseSync` mode flags in `frontend/game.js` to track healthy versus degraded SSE operation separately from polling fallback, and introduced defensive `parseSSEEventPayload(eventType, rawData)` helpers that normalize known event payloads while ignoring malformed JSON, unknown types, and partial agent payloads safely."
+      "notes": "Updated `frontend/game.js:normalizeBackendAgentPayload()` so missing `authStatus` now derives from boolean `online` (`approved` when true, `offline` when false) before falling back to `pending`. Added frontend regression coverage for online-true, online-false, and explicit-authStatus precedence."
     },
     {
       "id": "T-005",
-      "title": "Create EventSource lifecycle during scene setup",
-      "description": "As a user, I need the scene to open one EventSource connection during creation so that live office updates begin immediately and can be cleaned up safely.",
+      "title": "Apply normalized presence data to office agent rendering",
+      "description": "As a user, I need the office rendering path to consume normalized names and auth state so that labels, opacity, and status indicators stay consistent between snapshots and live updates.",
       "acceptanceCriteria": [
-        "frontend/game.js opens an EventSource to /ui/events during scene creation",
-        "The EventSource instance is stored on the scene or an equivalent lifecycle-owned object so it is initialized once per scene lifecycle",
-        "Open and error handlers are registered on the EventSource for healthy-stream and degraded-mode transitions",
+        "An agent normalized from online true without authStatus renders at full opacity",
+        "An agent normalized from online true without authStatus shows the online or green status indicator",
+        "An agent normalized from online false without authStatus renders as offline rather than pending",
+        "The same backend payload values produce the same visible name and presence styling in snapshot rendering and subsequent SSE updates",
         "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Added `connectOfficeEventStream(scene)` in `frontend/game.js` so scene creation opens a single `EventSource('/ui/events')`, stores it on the scene-owned `sseSync` state, and registers `open`/`error` handlers that toggle healthy versus degraded SSE mode through the shared helper path."
+      "notes": "Updated `frontend/game.js` so office-agent rendering always consumes normalized payloads: snapshot agents now keep the shared alias-or-name fallback instead of forcing `Agent`, and the polling `/agents` path normalizes backend payloads before slot assignment and reconciliation. Extended `test/frontend-normalization.test.mjs` to verify snapshot agents render approved/green styling for online payloads without explicit `authStatus`, render offline styling instead of pending when `online` is false, and match the same visible name/authStatus produced by incremental SSE updates."
     },
     {
       "id": "T-006",
-      "title": "Bootstrap scene state from SSE state event",
-      "description": "As a user, I need the initial office state to load from the SSE state event so that the main agent and visible office agents render without waiting for a polling round trip.",
+      "title": "Restrict main-agent selection to explicit isMain payloads",
+      "description": "As a user, I need main-character selection to return a main agent only when isMain is true so that guest agents cannot take over the Star character or owner status.",
       "acceptanceCriteria": [
-        "frontend/game.js listens for the SSE state event",
-        "The state event payload initializes main-agent status and detail via the shared main-agent helper",
-        "The state event payload initializes the visible office-agent collection via the shared office-agent helpers",
-        "Scene bootstrap can render current server state before normal polling runs",
+        "getMainAgentPayloadFromStateSnapshot returns no main-agent payload when no agent in the snapshot has isMain true",
+        "getMainAgentPayloadFromStateSnapshot returns the payload for the agent marked with isMain true when one exists",
+        "Online guest agents without isMain true are excluded from main-agent selection",
         "Typecheck passes"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Wired the `/ui/events` `state` listener in `frontend/game.js` so the initial public-state snapshot now selects the same main agent as `/status`, applies it through `applyMainAgentPayload()`, and reconciles the visible office agents through the shared office-agent lifecycle helpers before polling fallback runs."
+      "notes": "Updated `frontend/game.js:getMainAgentPayloadFromStateSnapshot()` so snapshot ownership returns a Star payload only from an agent with `isMain === true`, instead of falling back to the first online or first available guest. Extended `test/frontend-normalization.test.mjs` with regressions that cover the no-main snapshot path and explicit-main selection."
     },
     {
       "id": "T-007",
-      "title": "Handle incremental agent SSE events",
-      "description": "As a user, I need incremental SSE events applied immediately so that agent joins, updates, departures, and offline transitions are reflected in the office without delay.",
+      "title": "Keep guest movement updates separate from Star ownership",
+      "description": "As a user, I need guest agents to keep moving based on their activity while the Star character remains idle when no main agent exists.",
       "acceptanceCriteria": [
-        "agent_join events create a remote agent immediately through the shared office-agent helper",
-        "agent_update events update an existing remote agent's rendered location, detail, or status presentation through the shared helper path",
-        "agent_leave events remove the matching remote agent from scene state and rendering",
-        "agent_offline events mark the matching remote agent as offline without removing unrelated agents",
-        "Unknown event types or partial agent payloads are ignored safely without stopping later event handling",
+        "A guest agent with a non-idle state such as writing still updates to the expected office location",
+        "The same guest activity update does not change the Star character animation when no main agent exists",
+        "The owner status bar remains in idle-owner behavior when only guest agents are present",
         "Typecheck passes"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "Registered `/ui/events` listeners in `frontend/game.js` for `agent_join`, `agent_update`, `agent_leave`, and `agent_offline`, routing each parsed payload through a shared `applyOfficeAgentStreamEvent()` helper. Incremental SSE payloads now reuse office-agent lifecycle helpers with slot preservation and reassignment via stored container metadata, while malformed or partial payloads continue to no-op safely through the shared parser."
+      "notes": "Updated `frontend/game.js:applySceneStateEvent()` so SSE `state` snapshots always send the main-character UI through a shared idle fallback payload when no snapshot agent has `isMain === true`, while office-agent reconciliation still applies guest movement updates from the same snapshot. Extended `test/frontend-normalization.test.mjs` to verify a guest-only writing snapshot keeps the guest in the writing area and resets the owner payload to idle with `Waiting...` detail."
     },
     {
       "id": "T-008",
-      "title": "Gate polling while SSE is healthy",
-      "description": "As a developer, I need existing polling loops guarded by SSE health so that fetchStatus() and fetchAgents() do not duplicate live updates while the stream is working.",
+      "title": "Return an idle owner payload from /status without a main agent",
+      "description": "As a user, I need the backend /status route to emit an idle owner response when no tracked agent is marked as main so that the frontend owner UI does not mirror a guest agent.",
       "acceptanceCriteria": [
-        "Normal fetchStatus() polling is skipped while the scene is in healthy SSE mode",
-        "Normal fetchAgents() polling is skipped while the scene is in healthy SSE mode",
-        "Existing polling timers or guards are updated so the same agent state is not applied twice during healthy SSE operation",
+        "When no tracked agent has isMain true, /status returns an idle owner state payload",
+        "When no tracked agent has isMain true, /status returns detail text \"Waiting...\"",
+        "When no tracked agent has isMain true, /status does not mirror the first online guest agent",
+        "Existing /status behavior for a valid main agent remains unchanged",
         "Typecheck passes"
       ],
       "priority": 8,
       "passes": true,
-      "notes": "Added `shouldUsePollingSync(scene)` in `frontend/game.js` so the recurring `update()` loop now skips `fetchStatus()` and `fetchAgents()` whenever `/ui/events` is healthy, while degraded SSE mode re-enables both polling paths through the shared `usePollingFallback` gate."
+      "notes": "Updated `src/ui-routes.ts:/status` to select the owner payload only from a snapshot agent with `isMain === true`, otherwise return the existing idle `Waiting...` payload instead of mirroring the first online guest. Added `test/ui-routes.test.mjs` coverage for the no-main idle fallback and for preserving the current owner payload when an explicit main agent exists."
     },
     {
       "id": "T-009",
-      "title": "Restore polling fallback and scene cleanup around SSE failure",
-      "description": "As a user, I need fetch-based synchronization to resume after SSE errors and clean up correctly on teardown so that the office stays current when the stream fails or the scene is destroyed.",
+      "title": "Add frontend regression tests for normalization and no-main ownership",
+      "description": "As a developer, I need automated frontend coverage for normalized payload handling and main-agent selection so that alias, presence, and Star ownership regressions are caught quickly.",
       "acceptanceCriteria": [
-        "SSE error handling enables fetchStatus() and fetchAgents() fallback polling after stream failure",
-        "Recovery logic can disable fallback polling again if SSE reconnects or a new healthy EventSource is established",
-        "Scene teardown closes the active EventSource and clears any related SSE mode flags or listeners",
+        "Automated tests cover alias-first normalization for agent_join and agent_update payloads",
+        "Automated tests cover online true and online false fallback mapping when authStatus is absent",
+        "Automated tests cover the no-main-agent path where getMainAgentPayloadFromStateSnapshot returns no main-agent payload",
         "Typecheck passes"
       ],
       "priority": 9,
       "passes": true,
-      "notes": "Completed the SSE failure/recovery path in `frontend/game.js` by tracking bound EventSource listeners on `scene.sseSync`, degrading immediately to polling on stream errors, scheduling a fresh `/ui/events` connection when the browser marks the stream closed, and closing/removing the active stream plus timers during scene `shutdown`/`destroy`. Existing `open` handling now clears fallback polling again after reconnects."
+      "notes": "Expanded `test/frontend-normalization.test.mjs` so the acceptance criteria are explicit in the frontend suite: separate SSE regressions now cover alias-first normalization for both `agent_join` and `agent_update`, an SSE-level auth fallback regression covers `online: true` and `online: false` when `authStatus` is absent, and snapshot ownership coverage continues to assert that `getMainAgentPayloadFromStateSnapshot()` returns `null` when no agent has `isMain === true`."
+    },
+    {
+      "id": "T-010",
+      "title": "Add backend regression tests for /status idle fallback",
+      "description": "As a developer, I need automated backend coverage for the /status no-main-agent fallback so that guest agents cannot silently become the reported owner again.",
+      "acceptanceCriteria": [
+        "Automated tests cover the /status idle fallback when no tracked agent has isMain true",
+        "The no-main-agent test verifies detail text \"Waiting...\"",
+        "Automated tests verify that /status continues returning the existing owner payload when a valid main agent exists",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "Added focused Fastify route regressions in `test/ui-routes.test.mjs` that verify `/status` returns the idle `Waiting...` owner payload when no snapshot agent has `isMain === true`, and preserves the existing owner payload when an explicit main agent exists. Re-ran `npm test` and `npm run lint` to confirm the backend coverage passes with the current route behavior."
     }
   ]
 }

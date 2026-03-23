@@ -100,3 +100,141 @@ test("GET /ui/state matches the manifest state_fields contract", async (t) => {
     manifest.state_fields,
   );
 });
+
+test("GET /status returns idle owner payload when no agent is marked main", async (t) => {
+  const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), "star-office-memos-"));
+  const fastify = Fastify();
+  const sse = new SSEManager(60_000);
+
+  registerUIRoutes(fastify, {
+    getState: () => ({
+      agents: {
+        "guest-1": {
+          agentId: "guest-1",
+          alias: "Guest One",
+          avatar: "guest_role_1",
+          state: "writing",
+          detail: "Drafting spec",
+          area: "writing",
+          joinedAt: 1,
+          lastSeenAt: 1_717_171_717_000,
+          online: true,
+          isMain: false,
+        },
+      },
+      rooms: { breakroom: [], writing: ["guest-1"], error: [] },
+      background: {
+        current: "office_bg_small.webp",
+        updatedAt: 1_717_171_717_000,
+        updatedBy: null,
+      },
+      todayMemos: [],
+      yesterdayMemo: null,
+      officeConfig: {
+        name: "Status Contract Office",
+        maxAgents: 20,
+        language: "en",
+      },
+      lastUpdated: 1_717_171_717_000,
+    }),
+    setAgentState: () => null,
+    sse,
+    memoStore: new MemoStore(memoryDir),
+    adminPassword: "1234",
+  });
+
+  t.after(async () => {
+    sse.destroy();
+    await fastify.close();
+    fs.rmSync(memoryDir, { recursive: true, force: true });
+  });
+
+  const response = await fastify.inject({
+    method: "GET",
+    url: "/status",
+  });
+
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.state, "idle");
+  assert.equal(payload.detail, "Waiting...");
+  assert.equal(payload.progress, 0);
+  assert.equal(payload.officeName, "Status Contract Office");
+  assert.ok(Number.isFinite(Date.parse(payload.updated_at)));
+});
+
+test("GET /status preserves owner payload when a main agent exists", async (t) => {
+  const memoryDir = fs.mkdtempSync(path.join(os.tmpdir(), "star-office-memos-"));
+  const fastify = Fastify();
+  const sse = new SSEManager(60_000);
+  const mainLastSeenAt = 1_717_171_720_000;
+
+  registerUIRoutes(fastify, {
+    getState: () => ({
+      agents: {
+        "guest-1": {
+          agentId: "guest-1",
+          alias: "Guest One",
+          avatar: "guest_role_1",
+          state: "writing",
+          detail: "Drafting spec",
+          area: "writing",
+          joinedAt: 1,
+          lastSeenAt: 1_717_171_717_000,
+          online: true,
+          isMain: false,
+        },
+        "owner-1": {
+          agentId: "owner-1",
+          alias: "Owner One",
+          avatar: "main_role",
+          state: "researching",
+          detail: "Reviewing backlog",
+          area: "writing",
+          joinedAt: 2,
+          lastSeenAt: mainLastSeenAt,
+          online: false,
+          isMain: true,
+        },
+      },
+      rooms: { breakroom: [], writing: ["guest-1"], error: [] },
+      background: {
+        current: "office_bg_small.webp",
+        updatedAt: mainLastSeenAt,
+        updatedBy: null,
+      },
+      todayMemos: [],
+      yesterdayMemo: null,
+      officeConfig: {
+        name: "Status Contract Office",
+        maxAgents: 20,
+        language: "en",
+      },
+      lastUpdated: mainLastSeenAt,
+    }),
+    setAgentState: () => null,
+    sse,
+    memoStore: new MemoStore(memoryDir),
+    adminPassword: "1234",
+  });
+
+  t.after(async () => {
+    sse.destroy();
+    await fastify.close();
+    fs.rmSync(memoryDir, { recursive: true, force: true });
+  });
+
+  const response = await fastify.inject({
+    method: "GET",
+    url: "/status",
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    state: "researching",
+    detail: "Reviewing backlog",
+    progress: 0,
+    updated_at: new Date(mainLastSeenAt).toISOString(),
+    officeName: "Status Contract Office",
+  });
+});
