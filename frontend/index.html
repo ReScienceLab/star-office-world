@@ -986,6 +986,20 @@
             background: #444;
             border-radius: 3px;
         }
+        .memo-entry {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+        .memo-alias {
+            font-size: 10px;
+            color: #a0856a;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .memo-text {
+            font-size: 12px;
+            color: #3d2b1f;
+        }
         #memo-placeholder {
             color: #666;
             font-style: italic;
@@ -1606,21 +1620,52 @@
         async function loadMemo() {
             const memoDate = document.getElementById('memo-date');
             const memoContent = document.getElementById('memo-content');
-            
+
+            // Load today's memos first (real-time entries)
+            let todayEntries = [];
+            try {
+                const todayRes = await fetch('/ui/memo/today?t=' + Date.now(), { cache: 'no-store' });
+                const todayData = await todayRes.json();
+                if (todayData.success && Array.isArray(todayData.entries)) {
+                    todayEntries = todayData.entries;
+                }
+            } catch (e) {}
+
+            if (todayEntries.length > 0) {
+                memoDate.textContent = new Date().toLocaleDateString('zh-CN');
+                memoContent.innerHTML = todayEntries.map(e =>
+                    `<div class="memo-entry"><span class="memo-alias">${e.alias || '?'}</span><span class="memo-text">${e.content.replace(/\n/g, '<br>')}</span></div>`
+                ).join('');
+                return;
+            }
+
+            // Fall back to yesterday's memo
             try {
                 const response = await fetch('/yesterday-memo?t=' + Date.now(), { cache: 'no-store' });
                 const data = await response.json();
-                
                 if (data.success && data.memo) {
                     memoDate.textContent = data.date || '';
                     memoContent.innerHTML = data.memo.replace(/\n/g, '<br>');
                 } else {
-                    memoContent.innerHTML = '<div id="memo-placeholder">暂无昨日日记</div>';
+                    memoContent.innerHTML = '<div id="memo-placeholder">暂无日记</div>';
                 }
             } catch (e) {
                 console.error('加载 memo 失败:', e);
                 memoContent.innerHTML = '<div id="memo-placeholder">加载失败</div>';
             }
+        }
+
+        function appendTodayMemoEntry(entry) {
+            const memoDate = document.getElementById('memo-date');
+            const memoContent = document.getElementById('memo-content');
+            if (!memoContent) return;
+            const placeholder = document.getElementById('memo-placeholder');
+            if (placeholder) placeholder.remove();
+            if (!memoDate.textContent) memoDate.textContent = new Date().toLocaleDateString('zh-CN');
+            const div = document.createElement('div');
+            div.className = 'memo-entry';
+            div.innerHTML = `<span class="memo-alias">${entry.alias || '?'}</span><span class="memo-text">${(entry.content || '').replace(/\n/g, '<br>')}</span>`;
+            memoContent.appendChild(div);
         }
 
         // 更新加载进度
@@ -3900,9 +3945,20 @@ function toggleBrokerPanel() {
             } catch (e) { console.error('强制冒泡失败:', e); }
         }
 
+        let _lastMemoFetch = 0;
+        const MEMO_FETCH_INTERVAL = 15000;
+        function maybeFetchMemo() {
+            const now = Date.now();
+            if (now - _lastMemoFetch > MEMO_FETCH_INTERVAL) {
+                _lastMemoFetch = now;
+                loadMemo();
+            }
+        }
+
         function fetchGuestAgents() {
             // demo 随机状态先更新（不依赖后端）
             maybeRandomizeDemoVisitors();
+            maybeFetchMemo();
 
             return fetch('/agents?t=' + Date.now(), { cache: 'no-store' })
                 .then(response => response.json())

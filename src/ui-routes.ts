@@ -135,6 +135,19 @@ export function registerUIRoutes(
     }));
   });
 
+  // ── Compat: Flask-style yesterday-memo ──────────────────────────────────
+
+  fastify.get("/yesterday-memo", async () => {
+    const memo = memoStore.getYesterday();
+    if (!memo || memo.entries.length === 0) {
+      return { success: false, msg: "没有找到昨日日记" };
+    }
+    const text = memo.entries
+      .map((e) => `[${e.alias}] ${e.content}`)
+      .join("\n\n");
+    return { success: true, date: memo.date, memo: text };
+  });
+
   // ── Compat: Flask-style set_state (for set_state.py) ─────────────────────
 
   fastify.post("/set_state", async (req) => {
@@ -156,6 +169,28 @@ export function registerUIRoutes(
     }
     sse.broadcast("agent_update", updated);
     return { status: "ok" };
+  });
+
+  // ── Asset drawer auth stubs ──────────────────────────────────────────────
+
+  fastify.get("/assets/auth/status", async (req) => {
+    const cookies = (req.headers["cookie"] ?? "") as string;
+    const authed = cookies.includes("asset_authed=1");
+    return { ok: true, authed };
+  });
+
+  fastify.post("/assets/auth", async (req, reply) => {
+    const body = req.body as Record<string, unknown>;
+    const pass = (body["password"] as string) ?? "";
+    if (pass === adminPassword) {
+      reply.header("Set-Cookie", "asset_authed=1; Path=/; HttpOnly; SameSite=Lax");
+      return { ok: true };
+    }
+    return { ok: false, msg: "密码错误" };
+  });
+
+  fastify.get("/assets/list", async () => {
+    return { ok: true, items: [] };
   });
 
   // ── Admin Auth ───────────────────────────────────────────────────────────
