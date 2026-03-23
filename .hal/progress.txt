@@ -2,6 +2,7 @@
 
 ## Codebase Patterns
 
+- `frontend/game.js:applySceneStateEvent()` should always pair guest-office reconciliation with an explicit owner payload update; when a snapshot has no `isMain === true` agent, send the Star UI through the shared idle fallback instead of leaving the previous owner state latched.
 - `frontend/game.js:getMainAgentPayloadFromStateSnapshot()` should only derive Star ownership from an agent payload with `isMain === true`; snapshot guests staying online must not become the owner fallback.
 - `frontend/game.js:normalizeBackendAgentPayload()` should own alias-vs-name precedence for backend agent labels; prefer a non-empty `alias` before `name` there so snapshot and SSE agent rendering stay aligned.
 - `frontend/game.js:normalizeBackendAgentPayload()` should also own the shared presence fallback: when backend payloads omit `authStatus` but include boolean `online`, derive `approved` for `true` and `offline` for `false` there so snapshot and SSE styling stay consistent.
@@ -21,7 +22,7 @@
 - `frontend/game.js` should route remote office-agent payloads through `applyOfficeAgentPayload(agent)`, which delegates to shared `createOfficeAgent()`, `updateOfficeAgent()`, `removeOfficeAgent()`, and `markOfficeAgentOffline()` helpers so polling and future SSE events do not duplicate sprite lifecycle logic.
 - `frontend/game.js` should keep SSE transport health on the scene-owned `sseSync` object and funnel raw `/ui/events` payloads through `parseSSEEventPayload(eventType, rawData)` so malformed JSON and partial agent events degrade safely to `null`.
 - `frontend/game.js` should open `/ui/events` only through `connectOfficeEventStream(scene)` during `create()`, with `registerOfficeEventStream()` owning the `open`/`error` health transitions so later SSE state and agent handlers reuse the same lifecycle-managed EventSource.
-- `frontend/game.js` should treat the `/ui/events` `state` event as a full `getPublicState()` snapshot: derive the main-agent status from the first online agent (or first available agent), then translate `state.agents` back through `reconcileOfficeAgentsFromPayload()` instead of assuming the `/status` or `/agents` response shapes.
+- `frontend/game.js` should treat the `/ui/events` `state` event as a full `getPublicState()` snapshot: derive main-agent status only from an explicit `isMain === true` agent or fall back to the shared idle owner payload, then translate `state.agents` back through `reconcileOfficeAgentsFromPayload()` instead of assuming the `/status` or `/agents` response shapes.
 - `frontend/game.js` should route incremental `agent_join`/`agent_update`/`agent_leave`/`agent_offline` events through `applyOfficeAgentStreamEvent()` plus `assignOfficeAgentSlot()` so live SSE updates preserve existing area slots, reuse the shared office-agent lifecycle helpers, and avoid creating ghost offline agents.
 - `frontend/game.js` should gate recurring `/status` and `/agents` polling through `shouldUsePollingSync(scene)`, which reads `scene.sseSync.usePollingFallback` so healthy SSE suppresses duplicate fetches and degraded SSE restores both polling loops from one switch.
 - `frontend/game.js` should treat `/ui/events` teardown as a first-class scene lifecycle concern: bind one shutdown/destroy cleanup path that removes stored EventSource listeners, closes the active stream, clears reconnect timers, and only creates a fresh EventSource after `readyState === CLOSED`.
@@ -262,4 +263,13 @@
   - Patterns discovered: Snapshot ownership should be driven only by the explicit `isMain` flag, not by online presence ordering.
   - Gotchas encountered: VM-evaluated helper return values in `test/frontend-normalization.test.mjs` compare best by field assertions rather than object deep-equality against host-context literals.
   - Useful context: `applySceneStateEvent()` consumes `getMainAgentPayloadFromStateSnapshot()` directly, so returning `null` here is the clean way to leave Star idle when the snapshot contains only guest agents.
+---
+## 2026-03-23 03:58:14 UTC - T-007
+- Updated `frontend/game.js` so SSE `state` snapshots keep guest office-agent reconciliation active while forcing the Star owner UI back to the shared idle payload when no snapshot agent is marked `isMain`.
+- Added a frontend regression that verifies a guest-only writing snapshot still reconciles the guest into the writing area and resets the owner payload to idle with `Waiting...` detail.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Snapshot handlers need to apply owner fallback and guest-agent reconciliation together; skipping the owner update leaves stale Star UI state even when guest movement is correct.
+  - Gotchas encountered: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+  - Useful context: `getIdleMainAgentPayload()` now centralizes the frontend idle-owner fallback used by SSE snapshots, matching the current compat `/status` idle detail text.
 ---

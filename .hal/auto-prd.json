@@ -100,8 +100,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated `frontend/game.js:applySceneStateEvent()` so SSE `state` snapshots always send the main-character UI through a shared idle fallback payload when no snapshot agent has `isMain === true`, while office-agent reconciliation still applies guest movement updates from the same snapshot. Extended `test/frontend-normalization.test.mjs` to verify a guest-only writing snapshot keeps the guest in the writing area and resets the owner payload to idle with `Waiting...` detail."
     },
     {
       "id": "T-008",

@@ -50,6 +50,8 @@ for (const functionName of [
   "parseSSEEventPayload",
   "getOfficeAgentsFromStateSnapshot",
   "getMainAgentPayloadFromStateSnapshot",
+  "getIdleMainAgentPayload",
+  "applySceneStateEvent",
   "getOfficeAgentAlpha",
   "getOfficeAgentDotColor"
 ]) {
@@ -207,4 +209,34 @@ test("getMainAgentPayloadFromStateSnapshot returns the explicit main agent paylo
 
   assert.equal(payload.state, "reviewing");
   assert.equal(payload.detail, "Checking notes");
+});
+
+test("applySceneStateEvent keeps guest movement payloads while resetting owner to idle when no main agent exists", () => {
+  let appliedMainPayload = null;
+  let reconciledAgents = null;
+  context.applyMainAgentPayload = (payload) => {
+    appliedMainPayload = payload;
+  };
+  context.reconcileOfficeAgentsFromPayload = (agents) => {
+    reconciledAgents = agents;
+  };
+
+  context.applySceneStateEvent({}, {
+    agents: {
+      "guest-writer": {
+        agentId: "guest-writer",
+        alias: "Guest Writer",
+        online: true,
+        state: "working",
+        area: "writing"
+      }
+    }
+  });
+
+  assert.equal(appliedMainPayload.state, "idle");
+  assert.equal(appliedMainPayload.detail, "Waiting...");
+  assert.equal(reconciledAgents.length, 1);
+  assert.equal(reconciledAgents[0].agentId, "guest-writer");
+  assert.equal(reconciledAgents[0].area, "writing");
+  assert.equal(reconciledAgents[0].state, "writing");
 });

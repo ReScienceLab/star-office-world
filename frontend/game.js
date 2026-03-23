@@ -593,6 +593,13 @@ function getMainAgentPayloadFromStateSnapshot(snapshotAgents) {
   };
 }
 
+function getIdleMainAgentPayload() {
+  return {
+    state: 'idle',
+    detail: 'Waiting...'
+  };
+}
+
 function getStoredOfficeAgentMeta(agentId) {
   const container = agents[agentId];
   if (!container || !container.officeAgentMeta || !isPlainObject(container.officeAgentMeta)) {
@@ -672,10 +679,8 @@ function reconcileOfficeAgentsFromPayload(agentPayloads) {
 function applySceneStateEvent(scene, statePayload) {
   if (!scene || !statePayload || !isPlainObject(statePayload.agents)) return;
 
-  const mainAgentPayload = getMainAgentPayloadFromStateSnapshot(statePayload.agents);
-  if (mainAgentPayload) {
-    applyMainAgentPayload(mainAgentPayload);
-  }
+  const mainAgentPayload = getMainAgentPayloadFromStateSnapshot(statePayload.agents) || getIdleMainAgentPayload();
+  applyMainAgentPayload(mainAgentPayload);
 
   reconcileOfficeAgentsFromPayload(getOfficeAgentsFromStateSnapshot(statePayload.agents));
 }
