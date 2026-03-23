@@ -18,12 +18,6 @@ frontend:
   dir: ./frontend
 
 env:
-  - name: STAR_OFFICE_WORLD_ID
-    required: true
-    description: "Unique world identifier, e.g. my-office"
-  - name: STAR_OFFICE_GATEWAY_URLS
-    required: true
-    description: "AWN Gateway URL(s), comma-separated"
   - name: STAR_OFFICE_NAME
     required: false
     description: "Office display name (default: Star Office)"
