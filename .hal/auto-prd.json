@@ -143,8 +143,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added focused Fastify route regressions in `test/ui-routes.test.mjs` that verify `/status` returns the idle `Waiting...` owner payload when no snapshot agent has `isMain === true`, and preserves the existing owner payload when an explicit main agent exists. Re-ran `npm test` and `npm run lint` to confirm the backend coverage passes with the current route behavior."
     }
   ]
 }

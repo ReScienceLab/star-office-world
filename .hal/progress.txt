@@ -293,3 +293,12 @@
   - Gotchas encountered: Because `frontend/game.js` is exercised by extracting helpers into a VM context, SSE normalization regressions are easiest to express as field-level assertions on the parsed payload rather than end-to-end scene imports.
   - Useful context: Validation for this frontend-only test story used `node --check frontend/game.js`, `npm test`, and `npm run lint`; browser verification was not required because no UI code changed.
 ---
+## 2026-03-23 04:05:39 UTC - T-010
+- Recorded the existing backend `/status` route regressions as the completion for this story: `test/ui-routes.test.mjs` verifies the idle `Waiting...` fallback when no snapshot agent has `isMain === true`, and preserves the owner payload when a main agent exists.
+- Re-ran the full project quality gate to confirm the backend coverage still passes with the current route behavior.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Backend compat route acceptance criteria can stay explicit in `test/ui-routes.test.mjs` by stubbing `getState()` with snapshot-shaped agents and asserting the exact `/status` JSON payload.
+  - Gotchas encountered: This story was already implemented in the workspace but had not been marked complete in the PRD, so finishing the iteration required validation plus tracking-file updates rather than more code changes.
+  - Useful context: Validation for this backend-only story used `npm test` and `npm run lint`; no browser verification applied because no frontend code changed.
+---
