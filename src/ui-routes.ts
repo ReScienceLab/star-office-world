@@ -28,6 +28,7 @@ export function registerUIRoutes(
   deps: UIRouteDeps,
 ): void {
   const { getState, setAgentState, sse, memoStore, adminPassword } = deps;
+  type OwnerSnapshotAgent = OfficeAgent & { isMain?: boolean };
 
   // ── SSE Stream ───────────────────────────────────────────────────────────
 
@@ -95,10 +96,8 @@ export function registerUIRoutes(
 
   fastify.get("/status", async () => {
     const state = getState();
-    const agents = Object.values(state.agents);
-    // Audit note: this fallback currently mirrors the first online agent,
-    // then the first available agent, and only returns idle when none exist.
-    const mainAgent = agents.find((a) => a.online) ?? agents[0];
+    const agents = Object.values(state.agents) as OwnerSnapshotAgent[];
+    const mainAgent = agents.find((a) => a.isMain === true);
     if (!mainAgent) {
       return {
         state: "idle",

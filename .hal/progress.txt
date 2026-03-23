@@ -2,6 +2,7 @@
 
 ## Codebase Patterns
 
+- `src/ui-routes.ts:/status` should derive owner payloads only from snapshot agents with `isMain === true`; if none exist, return the idle `Waiting...` payload instead of mirroring an online guest.
 - `frontend/game.js:applySceneStateEvent()` should always pair guest-office reconciliation with an explicit owner payload update; when a snapshot has no `isMain === true` agent, send the Star UI through the shared idle fallback instead of leaving the previous owner state latched.
 - `frontend/game.js:getMainAgentPayloadFromStateSnapshot()` should only derive Star ownership from an agent payload with `isMain === true`; snapshot guests staying online must not become the owner fallback.
 - `frontend/game.js:normalizeBackendAgentPayload()` should own alias-vs-name precedence for backend agent labels; prefer a non-empty `alias` before `name` there so snapshot and SSE agent rendering stay aligned.
@@ -272,4 +273,13 @@
   - Patterns discovered: Snapshot handlers need to apply owner fallback and guest-agent reconciliation together; skipping the owner update leaves stale Star UI state even when guest movement is correct.
   - Gotchas encountered: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
   - Useful context: `getIdleMainAgentPayload()` now centralizes the frontend idle-owner fallback used by SSE snapshots, matching the current compat `/status` idle detail text.
+---
+## 2026-03-23 04:01:52 UTC - T-008
+- Updated `src/ui-routes.ts:/status` so the compat owner payload now comes only from an agent snapshot with `isMain === true`; when no main agent exists, the route returns the idle `Waiting...` owner payload instead of mirroring the first online guest.
+- Added backend route regressions in `test/ui-routes.test.mjs` for both the no-main idle fallback and the explicit-main success path.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `src/ui-routes.ts`, `test/ui-routes.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: The compat `/status` route should stay aligned with frontend ownership logic and treat `isMain` on the public snapshot as the only valid owner selector.
+  - Gotchas encountered: `isMain` is not part of the canonical `OfficeAgent` type, so route code that reads it from `getPublicState()` snapshots needs an explicit snapshot-side type narrowing.
+  - Useful context: Fastify route regressions can stub `getState()` directly with snapshot-shaped agents that include `isMain`, which is enough to test compat ownership behavior without booting the full world server.
 ---

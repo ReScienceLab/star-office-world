@@ -115,8 +115,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated `src/ui-routes.ts:/status` to select the owner payload only from a snapshot agent with `isMain === true`, otherwise return the existing idle `Waiting...` payload instead of mirroring the first online guest. Added `test/ui-routes.test.mjs` coverage for the no-main idle fallback and for preserving the current owner payload when an explicit main agent exists."
     },
     {
       "id": "T-009",
