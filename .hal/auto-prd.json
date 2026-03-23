@@ -72,8 +72,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated `frontend/game.js` so office-agent rendering always consumes normalized payloads: snapshot agents now keep the shared alias-or-name fallback instead of forcing `Agent`, and the polling `/agents` path normalizes backend payloads before slot assignment and reconciliation. Extended `test/frontend-normalization.test.mjs` to verify snapshot agents render approved/green styling for online payloads without explicit `authStatus`, render offline styling instead of pending when `online` is false, and match the same visible name/authStatus produced by incremental SSE updates."
     },
     {
       "id": "T-006",

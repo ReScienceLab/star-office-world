@@ -553,9 +553,6 @@ function getOfficeAgentsFromStateSnapshot(snapshotAgents) {
   const areaSlots = { breakroom: 0, writing: 0, error: 0 };
   for (const agent of Object.values(snapshotAgents)) {
     const normalizedAgent = normalizeBackendAgentPayload(agent, {
-      getName: (snapshotAgent) => typeof snapshotAgent.alias === 'string' && snapshotAgent.alias
-        ? snapshotAgent.alias
-        : 'Agent',
       getUpdatedAt: (snapshotAgent) => typeof snapshotAgent.lastSeenAt === 'number'
         ? new Date(snapshotAgent.lastSeenAt).toISOString()
         : undefined
@@ -1373,15 +1370,18 @@ function fetchAgents() {
     .then(response => response.json())
     .then(data => {
       if (!Array.isArray(data)) return;
+      const normalizedAgents = data
+        .map(agent => normalizeBackendAgentPayload(agent))
+        .filter(Boolean);
       // 重置位置计数器
       // 按区域分配不同位置索引，避免重叠
       const areaSlots = { breakroom: 0, writing: 0, error: 0 };
-      for (let agent of data) {
+      for (const agent of normalizedAgents) {
         const area = agent.area || 'breakroom';
         agent._slotIndex = areaSlots[area] || 0;
         areaSlots[area] = (areaSlots[area] || 0) + 1;
       }
-      reconcileOfficeAgentsFromPayload(data);
+      reconcileOfficeAgentsFromPayload(normalizedAgents);
     })
     .catch(error => {
       console.error('拉取 agents 失败:', error);

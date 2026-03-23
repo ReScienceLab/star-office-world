@@ -47,7 +47,10 @@ for (const functionName of [
   "normalizeBackendAgentPayload",
   "parseSSEAgentPayload",
   "normalizeSSEEventType",
-  "parseSSEEventPayload"
+  "parseSSEEventPayload",
+  "getOfficeAgentsFromStateSnapshot",
+  "getOfficeAgentAlpha",
+  "getOfficeAgentDotColor"
 ]) {
   vm.runInContext(extractFunctionSource(functionName), context);
 }
@@ -124,4 +127,42 @@ test("parseSSEEventPayload uses alias-first names for agent_join and agent_updat
   assert.equal(joinEvent.payload.name, "Lobster-Join");
   assert.equal(updateEvent.payload.name, "Lobster-Update");
   assert.equal(updateEvent.payload.state, "writing");
+});
+
+test("snapshot office agents preserve normalized name fallback and presence styling", () => {
+  const rawAgent = {
+    agentId: "agent-4",
+    name: "Research Bot",
+    online: true,
+    state: "idle",
+    area: "writing",
+    lastSeenAt: Date.UTC(2026, 2, 23, 4, 0, 0)
+  };
+
+  const [snapshotAgent] = context.getOfficeAgentsFromStateSnapshot({
+    [rawAgent.agentId]: rawAgent
+  });
+  const sseEvent = context.parseSSEEventPayload("agent_update", JSON.stringify(rawAgent));
+
+  assert.equal(snapshotAgent.name, "Research Bot");
+  assert.equal(snapshotAgent.authStatus, "approved");
+  assert.equal(context.getOfficeAgentAlpha(snapshotAgent.authStatus), 1);
+  assert.equal(context.getOfficeAgentDotColor(snapshotAgent.authStatus), 0x22c55e);
+  assert.equal(snapshotAgent.name, sseEvent.payload.name);
+  assert.equal(snapshotAgent.authStatus, sseEvent.payload.authStatus);
+});
+
+test("snapshot office agents render offline fallback instead of pending when authStatus is absent", () => {
+  const [snapshotAgent] = context.getOfficeAgentsFromStateSnapshot({
+    "agent-5": {
+      agentId: "agent-5",
+      alias: "Offline Guest",
+      online: false,
+      state: "idle"
+    }
+  });
+
+  assert.equal(snapshotAgent.authStatus, "offline");
+  assert.equal(context.getOfficeAgentAlpha(snapshotAgent.authStatus), 0.5);
+  assert.equal(context.getOfficeAgentDotColor(snapshotAgent.authStatus), 0x94a3b8);
 });

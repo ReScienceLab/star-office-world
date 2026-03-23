@@ -4,6 +4,7 @@
 
 - `frontend/game.js:normalizeBackendAgentPayload()` should own alias-vs-name precedence for backend agent labels; prefer a non-empty `alias` before `name` there so snapshot and SSE agent rendering stay aligned.
 - `frontend/game.js:normalizeBackendAgentPayload()` should also own the shared presence fallback: when backend payloads omit `authStatus` but include boolean `online`, derive `approved` for `true` and `offline` for `false` there so snapshot and SSE styling stay consistent.
+- `frontend/game.js` should normalize compat `/agents` response entries through `normalizeBackendAgentPayload()` before slot assignment and `reconcileOfficeAgentsFromPayload()`, otherwise polling can drift from snapshot/SSE label and presence styling.
 - `frontend/game.js` should normalize backend agent-shaped payloads through `normalizeBackendAgentPayload(rawAgent, options)` and layer snapshot-specific field sources such as alias, online-derived presence, and `lastSeenAt` timestamps through the helper's option callbacks instead of duplicating object mapping logic.
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
 - `getPublicState()` must deep-copy nested collections (`agents`, `rooms`, memos, config/background objects) before returning snapshots; shallow copies expose live state to REST/SSE callers.
@@ -242,4 +243,13 @@
   - Patterns discovered: Presence fallback should stay centralized in `normalizeBackendAgentPayload()` so snapshot and SSE payloads cannot drift on approved/offline styling when `authStatus` is absent.
   - Gotchas encountered: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
   - Useful context: Snapshot normalization no longer needs a bespoke `getAuthStatus` callback just to mirror `online`; the shared normalizer now handles that default for any backend agent-shaped payload.
+---
+## 2026-03-23 03:52:34 UTC - T-005
+- Updated `frontend/game.js` so office-agent rendering consumes normalized payloads on every frontend path: snapshot agents now keep the shared alias-or-name fallback, and `/agents` polling normalizes backend payloads before slot assignment and reconciliation.
+- Extended `test/frontend-normalization.test.mjs` with regressions that lock snapshot presence styling to the normalized `approved` and `offline` auth states and verify snapshot payloads match incremental SSE name/auth normalization.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Polling `/agents` payloads need the same normalization pass as snapshot and SSE data before they reach `reconcileOfficeAgentsFromPayload()`, or label/auth styling can drift between sync modes.
+  - Gotchas encountered: `getOfficeAgentsFromStateSnapshot()` was still overriding the shared name fallback and could collapse a valid backend `name` to `Agent`, even though incremental SSE updates already showed the correct visible name.
+  - Useful context: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
 ---
