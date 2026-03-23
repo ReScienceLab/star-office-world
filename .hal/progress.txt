@@ -3,6 +3,7 @@
 ## Codebase Patterns
 
 - `frontend/game.js:normalizeBackendAgentPayload()` should own alias-vs-name precedence for backend agent labels; prefer a non-empty `alias` before `name` there so snapshot and SSE agent rendering stay aligned.
+- `frontend/game.js:normalizeBackendAgentPayload()` should also own the shared presence fallback: when backend payloads omit `authStatus` but include boolean `online`, derive `approved` for `true` and `offline` for `false` there so snapshot and SSE styling stay consistent.
 - `frontend/game.js` should normalize backend agent-shaped payloads through `normalizeBackendAgentPayload(rawAgent, options)` and layer snapshot-specific field sources such as alias, online-derived presence, and `lastSeenAt` timestamps through the helper's option callbacks instead of duplicating object mapping logic.
 - UI routes receive `getPublicState()` snapshots; any mutation that must persist or affect derived room membership should go through `src/state.ts` helpers, especially `updateAgentState()` and `rebuildRooms()`.
 - `getPublicState()` must deep-copy nested collections (`agents`, `rooms`, memos, config/background objects) before returning snapshots; shallow copies expose live state to REST/SSE callers.
@@ -232,4 +233,13 @@
   - Patterns discovered: Frontend label selection should stay centralized in `normalizeBackendAgentPayload()` so snapshot and SSE code paths cannot drift on alias/name precedence.
   - Gotchas encountered: Because `frontend/game.js` is a browser script with top-level `Phaser` globals, Node-side frontend regressions are easiest to cover by extracting and evaluating the specific helper functions instead of importing the whole file.
   - Useful context: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+---
+## 2026-03-23 03:49:58 UTC - T-004
+- Updated `frontend/game.js` so shared backend agent normalization derives `authStatus` from boolean `online` when the backend payload omits `authStatus`, while still preserving any explicit backend `authStatus`.
+- Extended `test/frontend-normalization.test.mjs` with regressions for online-to-auth fallback and explicit `authStatus` precedence.
+- Files changed: `.hal/auto-prd.json`, `.hal/progress.txt`, `frontend/game.js`, `test/frontend-normalization.test.mjs`
+- **Learnings for future iterations:**
+  - Patterns discovered: Presence fallback should stay centralized in `normalizeBackendAgentPayload()` so snapshot and SSE payloads cannot drift on approved/offline styling when `authStatus` is absent.
+  - Gotchas encountered: Browser verification was skipped for this frontend story because no local dev server was running, so validation relied on `node --check frontend/game.js`, `npm test`, and `npm run lint`.
+  - Useful context: Snapshot normalization no longer needs a bespoke `getAuthStatus` callback just to mirror `online`; the shared normalizer now handles that default for any backend agent-shaped payload.
 ---

@@ -73,6 +73,40 @@ test("normalizeBackendAgentPayload falls back to name when alias is absent", () 
   assert.equal(payload.name, "Research Bot");
 });
 
+test("normalizeBackendAgentPayload maps online true to approved when authStatus is absent", () => {
+  const payload = context.normalizeBackendAgentPayload({
+    agentId: "agent-online",
+    alias: "Online Agent",
+    online: true,
+    state: "idle"
+  });
+
+  assert.equal(payload.authStatus, "approved");
+});
+
+test("normalizeBackendAgentPayload maps online false to offline when authStatus is absent", () => {
+  const payload = context.normalizeBackendAgentPayload({
+    agentId: "agent-offline",
+    alias: "Offline Agent",
+    online: false,
+    state: "idle"
+  });
+
+  assert.equal(payload.authStatus, "offline");
+});
+
+test("normalizeBackendAgentPayload preserves explicit authStatus over online fallback", () => {
+  const payload = context.normalizeBackendAgentPayload({
+    agentId: "agent-explicit",
+    alias: "Explicit Agent",
+    online: true,
+    authStatus: "rejected",
+    state: "idle"
+  });
+
+  assert.equal(payload.authStatus, "rejected");
+});
+
 test("parseSSEEventPayload uses alias-first names for agent_join and agent_update", () => {
   const joinEvent = context.parseSSEEventPayload("agent_join", JSON.stringify({
     agentId: "agent-3",

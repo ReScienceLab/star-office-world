@@ -57,8 +57,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated `frontend/game.js:normalizeBackendAgentPayload()` so missing `authStatus` now derives from boolean `online` (`approved` when true, `offline` when false) before falling back to `pending`. Added frontend regression coverage for online-true, online-false, and explicit-authStatus precedence."
     },
     {
       "id": "T-005",

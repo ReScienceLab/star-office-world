@@ -498,6 +498,8 @@ function normalizeBackendAgentPayload(rawAgent, options = {}) {
     ? options.getAuthStatus(rawAgent)
     : typeof rawAgent.authStatus === 'string'
       ? rawAgent.authStatus
+      : typeof rawAgent.online === 'boolean'
+        ? rawAgent.online ? 'approved' : 'offline'
       : 'pending';
   const updatedAt = typeof options.getUpdatedAt === 'function'
     ? options.getUpdatedAt(rawAgent)
@@ -554,7 +556,6 @@ function getOfficeAgentsFromStateSnapshot(snapshotAgents) {
       getName: (snapshotAgent) => typeof snapshotAgent.alias === 'string' && snapshotAgent.alias
         ? snapshotAgent.alias
         : 'Agent',
-      getAuthStatus: (snapshotAgent) => snapshotAgent.online ? 'approved' : 'offline',
       getUpdatedAt: (snapshotAgent) => typeof snapshotAgent.lastSeenAt === 'number'
         ? new Date(snapshotAgent.lastSeenAt).toISOString()
         : undefined
