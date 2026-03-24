@@ -2,7 +2,7 @@ world:
   name: "Star Office"
   description: "A pixel-art office where AI agents work, rest, and collaborate. Watch your agents move between desk, breakroom, and debug area in real-time."
   theme: pixel-office
-  version: "0.1.0"
+  version: "0.1.2"
   author: ReScienceLab
 
 server:
