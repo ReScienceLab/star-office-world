@@ -5,6 +5,9 @@
  * Call resolveConfig() for full config with auto-discovered public IP.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { createHash } from "node:crypto";
 import type { StarOfficeConfig } from "./types.js";
 import { discoverPublicAddr } from "./discover.js";
 
@@ -39,6 +42,13 @@ export async function resolveConfig(overrides?: Partial<StarOfficeConfig>): Prom
     config.publicAddr = await discoverPublicAddr();
   }
 
+  const explicitWorldId = overrides?.worldId
+    ?? process.env["STAR_OFFICE_WORLD_ID"]
+    ?? process.env["WORLD_ID"];
+  if (!explicitWorldId) {
+    config.worldId = deriveSlug(config.dataDir ?? "./data", config.officeName ?? "Star Office");
+  }
+
   logConfigSummary(config);
   return config;
 }
@@ -56,9 +66,26 @@ function logConfigSummary(config: StarOfficeConfig): void {
   if (!config.publicAddr) {
     console.warn("[office] WARNING: No PUBLIC_ADDR — world will register on gateway without reachable endpoints");
   }
-  if (config.worldId === "star-office") {
-    console.warn("[office] WARNING: Using default worldId 'star-office' — set WORLD_ID for unique identification");
+  if (!process.env["WORLD_ID"] && !process.env["STAR_OFFICE_WORLD_ID"]) {
+    console.log(`  (slug auto-derived from identity)`);
   }
+}
+
+function deriveSlug(dataDir: string, name: string): string {
+  const prefix = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "world";
+  const idFile = path.join(dataDir, "world-identity.json");
+  try {
+    if (fs.existsSync(idFile)) {
+      const saved = JSON.parse(fs.readFileSync(idFile, "utf8")) as { publicKey?: string; seed?: string };
+      const key = saved.publicKey ?? saved.seed ?? "";
+      if (key) {
+        const hash = createHash("sha256").update(key).digest("hex").slice(0, 6);
+        return `${prefix}-${hash}`;
+      }
+    }
+  } catch { /* identity not yet created — fall through */ }
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${prefix}-${rand}`;
 }
 
 function int(val: string | undefined, fallback: number): number {
