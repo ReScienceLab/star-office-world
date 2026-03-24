@@ -1,5 +1,11 @@
 # @resciencelab/star-office-world
 
+## 0.2.0
+
+### Minor Changes
+
+- aede54e: Auto-discover public IP via EC2 metadata / checkip when PUBLIC_ADDR is not set, ensuring worlds register on the gateway with reachable endpoints
+
 ## 0.1.4
 
 ### Patch Changes
