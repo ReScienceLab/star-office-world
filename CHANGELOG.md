@@ -1,5 +1,18 @@
 # @resciencelab/star-office-world
 
+## 0.1.2
+
+### Patch Changes
+
+- 275820d: Upgrade `@resciencelab/agent-world-sdk` from v1.3.1 to v1.5.0
+
+  Notable upstream changes consumed:
+
+  - v1.4.0: Rust `awn` CLI binary; peer→agent/world terminology rename; gateway endpoint redesign (`/peer/*` → `/agents`, `/messages`, `/ping`)
+  - v1.5.0: World manifest endpoint for querying world info and actions without joining; fix `awn daemon stop` IPC shutdown
+
+- 9c0ee6e: Upgrade `@resciencelab/agent-world-sdk` to v1.5.1 (patch fixes)
+
 ## 0.1.1
 
 ### Patch Changes
