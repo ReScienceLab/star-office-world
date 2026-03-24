@@ -1,0 +1,61 @@
+name: Changeset Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+    branches: [main]
+
+jobs:
+  check:
+    name: Changeset present
+    runs-on: ubuntu-latest
+    # Skip the "Version Packages" PR that changesets/action creates
+    if: |
+      github.actor != 'github-actions[bot]' &&
+      !startsWith(github.head_ref, 'changeset-release/')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check for changeset or skip-changelog label
+        run: |
+          if echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' | grep -q '"skip-changelog"'; then
+            echo "skip-changelog label present — no changeset required."
+            exit 0
+          fi
+
+          if git diff --name-only origin/main...HEAD | grep -qE '^\.changeset/.+\.md$'; then
+            echo "Changeset found."
+            exit 0
+          fi
+
+          echo ""
+          echo "No changeset found."
+          echo ""
+          echo "Run 'npx changeset add', select patch/minor/major, write one line, and commit the result."
+          echo "If this PR does not need a version bump (e.g. docs, CI, tests), add the 'skip-changelog' label."
+          exit 1
+
+      - name: Validate changeset package name
+        run: |
+          PKG_NAME=$(node -e "console.log(require('./package.json').name)")
+
+          ERRORS=0
+          for f in .changeset/*.md; do
+            [ "$f" = ".changeset/*.md" ] && break
+            [ "$(basename "$f")" = "README.md" ] && continue
+            PKGS=$(sed -n '/^---$/,/^---$/{ /^"/{s/"//g; s/:.*//; p}; /^[a-z@]/{s/:.*//; p} }' "$f")
+            for pkg in $PKGS; do
+              if [ "$pkg" != "$PKG_NAME" ]; then
+                echo "::error file=$f::Changeset references '$pkg' but the package is '$PKG_NAME'."
+                ERRORS=1
+              fi
+            done
+          done
+
+          if [ "$ERRORS" = "1" ]; then
+            echo "Fix: the changeset must reference '@resciencelab/star-office-world'."
+            exit 1
+          fi
+          echo "Changeset package name is valid."
