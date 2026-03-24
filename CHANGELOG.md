@@ -1,5 +1,11 @@
 # @resciencelab/star-office-world
 
+## 0.1.3
+
+### Patch Changes
+
+- 801ad91: Declare the main agent env as an AgentWorlds-managed value so deploys can auto-inject the user's primary agent with an oldest-bound fallback.
+
 ## 0.1.2
 
 ### Patch Changes
