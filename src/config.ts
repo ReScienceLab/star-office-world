@@ -2,9 +2,11 @@
  * Star Office World — Configuration loader
  *
  * Reads from environment variables with sensible defaults.
+ * Call resolveConfig() for full config with auto-discovered public IP.
  */
 
 import type { StarOfficeConfig } from "./types.js";
+import { discoverPublicAddr } from "./discover.js";
 
 export function loadConfig(overrides?: Partial<StarOfficeConfig>): StarOfficeConfig {
   return {
@@ -28,6 +30,35 @@ export function loadConfig(overrides?: Partial<StarOfficeConfig>): StarOfficeCon
     language: overrides?.language ?? (process.env["STAR_OFFICE_LANG"] as "cn" | "en" | "jp") ?? "cn",
     mainAgentId: overrides?.mainAgentId ?? process.env["STAR_OFFICE_MAIN_AGENT_ID"],
   };
+}
+
+export async function resolveConfig(overrides?: Partial<StarOfficeConfig>): Promise<StarOfficeConfig> {
+  const config = loadConfig(overrides);
+
+  if (!config.publicAddr) {
+    config.publicAddr = await discoverPublicAddr();
+  }
+
+  logConfigSummary(config);
+  return config;
+}
+
+function logConfigSummary(config: StarOfficeConfig): void {
+  console.log("[office] Configuration:");
+  console.log(`  worldId:     ${config.worldId}`);
+  console.log(`  name:        ${config.officeName}`);
+  console.log(`  port:        ${config.port}`);
+  console.log(`  publicAddr:  ${config.publicAddr ?? "(none)"}`);
+  console.log(`  publicPort:  ${config.publicPort ?? "(same as port)"}`);
+  console.log(`  gatewayUrls: ${config.gatewayUrls?.join(", ") ?? "(none)"}`);
+  console.log(`  dataDir:     ${config.dataDir}`);
+
+  if (!config.publicAddr) {
+    console.warn("[office] WARNING: No PUBLIC_ADDR — world will register on gateway without reachable endpoints");
+  }
+  if (config.worldId === "star-office") {
+    console.warn("[office] WARNING: Using default worldId 'star-office' — set WORLD_ID for unique identification");
+  }
 }
 
 function int(val: string | undefined, fallback: number): number {
