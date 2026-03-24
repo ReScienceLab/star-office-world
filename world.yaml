@@ -38,7 +38,11 @@ env:
     description: "Admin panel password"
   - name: STAR_OFFICE_MAIN_AGENT_ID
     required: false
-    description: "agentId to designate as the main character"
+    description: "agentId to designate as the main character (auto-injected by AgentWorlds when available)"
+    x-agentworlds:
+      injectFrom: user.primaryAgentId
+      fallback: user.oldestBoundAgentId
+      selectable: true
   - name: STAR_OFFICE_LANG
     required: false
     description: "Display language: cn | en | jp (default: cn)"
