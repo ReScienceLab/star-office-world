@@ -59,7 +59,7 @@ async function loadMemo() {
   const memoContent = document.getElementById('memo-content');
 
   try {
-    const response = await fetch('/yesterday-memo?t=' + Date.now(), { cache: 'no-store' });
+    const response = await fetch('yesterday-memo?t=' + Date.now(), { cache: 'no-store' });
     const data = await response.json();
 
     if (data.success && data.memo) {
@@ -381,7 +381,7 @@ function shouldUsePollingSync(scene) {
 
 function createOfficeEventSource() {
   if (typeof EventSource !== 'function') return null;
-  return new EventSource('/ui/events');
+  return new EventSource('ui/events');
 }
 
 function registerOfficeEventStream(scene, eventSource) {
@@ -688,7 +688,7 @@ function applySceneStateEvent(scene, statePayload) {
 
 // 状态控制栏函数（用于测试）
 function setState(state, detail) {
-  fetch('/set_state', {
+  fetch('set_state', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state, detail })
@@ -729,28 +729,28 @@ function preload() {
     hideLoadingOverlay();
   });
 
-  this.load.image('office_bg', '/office_bg_small' + (supportsWebP ? '.webp' : '.png') + '?v=');
-  this.load.spritesheet('star_idle', '/star-idle-spritesheet' + getExt('star-idle-spritesheet.png'), { frameWidth: 128, frameHeight: 128 });
-  this.load.spritesheet('star_researching', '/star-researching-spritesheet' + getExt('star-researching-spritesheet.png'), { frameWidth: 128, frameHeight: 105 });
+  this.load.image('office_bg', 'office_bg_small' + (supportsWebP ? '.webp' : '.png') + '?v=');
+  this.load.spritesheet('star_idle', 'star-idle-spritesheet' + getExt('star-idle-spritesheet.png'), { frameWidth: 128, frameHeight: 128 });
+  this.load.spritesheet('star_researching', 'star-researching-spritesheet' + getExt('star-researching-spritesheet.png'), { frameWidth: 128, frameHeight: 105 });
 
-  this.load.image('sofa_idle', '/sofa-idle' + getExt('sofa-idle.png'));
-  this.load.spritesheet('sofa_busy', '/sofa-busy-spritesheet' + getExt('sofa-busy-spritesheet.png'), { frameWidth: 256, frameHeight: 256 });
+  this.load.image('sofa_idle', 'sofa-idle' + getExt('sofa-idle.png'));
+  this.load.spritesheet('sofa_busy', 'sofa-busy-spritesheet' + getExt('sofa-busy-spritesheet.png'), { frameWidth: 256, frameHeight: 256 });
 
-  this.load.spritesheet('plants', '/plants-spritesheet' + getExt('plants-spritesheet.png'), { frameWidth: 160, frameHeight: 160 });
-  this.load.spritesheet('posters', '/posters-spritesheet' + getExt('posters-spritesheet.png'), { frameWidth: 160, frameHeight: 160 });
-  this.load.spritesheet('coffee_machine', '/coffee-machine-spritesheet' + getExt('coffee-machine-spritesheet.png'), { frameWidth: 230, frameHeight: 230 });
-  this.load.spritesheet('serverroom', '/serverroom-spritesheet' + getExt('serverroom-spritesheet.png'), { frameWidth: 180, frameHeight: 251 });
+  this.load.spritesheet('plants', 'plants-spritesheet' + getExt('plants-spritesheet.png'), { frameWidth: 160, frameHeight: 160 });
+  this.load.spritesheet('posters', 'posters-spritesheet' + getExt('posters-spritesheet.png'), { frameWidth: 160, frameHeight: 160 });
+  this.load.spritesheet('coffee_machine', 'coffee-machine-spritesheet' + getExt('coffee-machine-spritesheet.png'), { frameWidth: 230, frameHeight: 230 });
+  this.load.spritesheet('serverroom', 'serverroom-spritesheet' + getExt('serverroom-spritesheet.png'), { frameWidth: 180, frameHeight: 251 });
 
-  this.load.spritesheet('error_bug', '/error-bug-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 180, frameHeight: 180 });
-  this.load.spritesheet('cats', '/cats-spritesheet' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 160, frameHeight: 160 });
-  this.load.image('desk', '/desk' + getExt('desk.png'));
-  this.load.spritesheet('star_working', '/star-working-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 230, frameHeight: 144 });
-  this.load.spritesheet('sync_anim', '/sync-animation-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 256, frameHeight: 256 });
-  this.load.image('memo_bg', '/memo-bg' + (supportsWebP ? '.webp' : '.png'));
+  this.load.spritesheet('error_bug', 'error-bug-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 180, frameHeight: 180 });
+  this.load.spritesheet('cats', 'cats-spritesheet' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 160, frameHeight: 160 });
+  this.load.image('desk', 'desk' + getExt('desk.png'));
+  this.load.spritesheet('star_working', 'star-working-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 230, frameHeight: 144 });
+  this.load.spritesheet('sync_anim', 'sync-animation-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 256, frameHeight: 256 });
+  this.load.image('memo_bg', 'memo-bg' + (supportsWebP ? '.webp' : '.png'));
 
   // 新办公桌：强制 PNG（透明）
-  this.load.image('desk_v2', '/desk-v2.png');
-  this.load.spritesheet('flowers', '/flowers-spritesheet' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 65, frameHeight: 65 });
+  this.load.image('desk_v2', 'desk-v2.png');
+  this.load.spritesheet('flowers', 'flowers-spritesheet' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 65, frameHeight: 65 });
 }
 
 function create() {
@@ -1232,7 +1232,7 @@ function fetchStatus() {
   //   and the one-shot compat refresh in `setState()`.
   // - `applyMainAgentPayload()` is the shared plain-data path that SSE state bootstrap can reuse
   //   without depending on fetch response objects.
-  fetch('/status')
+  fetch('status')
     .then(response => response.json())
     .then(data => applyMainAgentPayload(data))
     .catch(error => {
@@ -1371,7 +1371,7 @@ function fetchAgents() {
   // - Current callers: scene bootstrap in `create()` and update-loop polling in `update()`.
   // - When SSE lands, stream handlers should reuse this lifecycle boundary while fallback re-enables
   //   this fetch path only after the stream is unhealthy.
-  fetch('/agents?t=' + Date.now(), { cache: 'no-store' })
+  fetch('agents?t=' + Date.now(), { cache: 'no-store' })
     .then(response => response.json())
     .then(data => {
       if (!Array.isArray(data)) return;
