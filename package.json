@@ -1,6 +1,6 @@
 {
   "name": "@resciencelab/star-office-world",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Pixel-art AI office dashboard built on Agent World Network protocol",
   "type": "module",
   "main": "dist/index.js",
