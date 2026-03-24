@@ -13,7 +13,9 @@ export function loadConfig(overrides?: Partial<StarOfficeConfig>): StarOfficeCon
     port: overrides?.port ?? int(process.env["STAR_OFFICE_PORT"] ?? process.env["PEER_PORT"], 19000),
     publicPort: overrides?.publicPort ?? intOrUndef(process.env["STAR_OFFICE_PUBLIC_PORT"] ?? process.env["PUBLIC_PORT"]),
     publicAddr: overrides?.publicAddr ?? process.env["STAR_OFFICE_PUBLIC_ADDR"] ?? process.env["PUBLIC_ADDR"] ?? null,
-    gatewayUrls: overrides?.gatewayUrls ?? parseList(process.env["STAR_OFFICE_GATEWAY_URLS"] ?? process.env["GATEWAY_URL"]),
+    gatewayUrls: overrides?.gatewayUrls
+      ?? parseList(process.env["STAR_OFFICE_GATEWAY_URLS"] ?? process.env["GATEWAY_URL"])
+      ?? ["https://gateway.agentworlds.ai"],
     password: overrides?.password ?? process.env["STAR_OFFICE_PASSWORD"] ?? "",
     adminPassword: overrides?.adminPassword ?? process.env["STAR_OFFICE_ADMIN_PASS"] ?? "1234",
     maxAgents: overrides?.maxAgents ?? int(process.env["STAR_OFFICE_MAX_AGENTS"], 20),
