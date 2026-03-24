@@ -91,7 +91,9 @@ describe("Star Office World — Agent Integration", () => {
     const resp = await fetch(`http://127.0.0.1:${PORT}/peer/ping`);
     const data = await resp.json();
     assert.equal(data.ok, true);
-    assert.equal(data.worldId, "star-office");
+    // Since SDK v1.4.0, worldId is the crypto protocol identity (aw:sha256:...);
+    // the human-readable slug is in data.slug.
+    assert.equal(data.slug, "star-office");
     assert.equal(data.worldName, "Star Office");
     assert.equal(data.agents, 0);
     assert.equal(data.maxAgents, 10);
@@ -106,7 +108,8 @@ describe("Star Office World — Agent Integration", () => {
     });
     assert.equal(result.status, 200);
     assert.equal(result.data.ok, true);
-    assert.equal(result.data.worldId, "star-office");
+    // Since SDK v1.4.0, worldId is the crypto protocol identity; slug is human-readable.
+    assert.equal(result.data.slug, "star-office");
     assert.ok(result.data.manifest);
     assert.equal(result.data.manifest.name, "Star Office");
     assert.ok(result.data.manifest.actions);
