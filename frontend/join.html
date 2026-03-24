@@ -7,7 +7,7 @@
     <style>
         @font-face {
             font-family: 'ArkPixel';
-            src: url('/fonts/ark-pixel-12px-proportional-zh_cn.ttf.woff2') format('woff2');
+            src: url('fonts/ark-pixel-12px-proportional-zh_cn.ttf.woff2') format('woff2');
             font-weight: normal;
             font-style: normal;
         }
@@ -148,7 +148,7 @@
                 return;
             }
             try {
-                const response = await fetch('/join-agent', {
+                const response = await fetch('join-agent', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, joinKey })
@@ -171,7 +171,7 @@
                 return;
             }
             try {
-                const response = await fetch('/leave-agent', {
+                const response = await fetch('leave-agent', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name })
