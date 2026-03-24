@@ -12,7 +12,7 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "lint": "tsc --noEmit",
     "version": "changeset version",
-    "release": "npm run build && npm publish"
+    "release": "npm run build"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
