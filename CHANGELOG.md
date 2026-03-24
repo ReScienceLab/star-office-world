@@ -1,5 +1,11 @@
 # @resciencelab/star-office-world
 
+## 0.2.1
+
+### Patch Changes
+
+- 2d67aaf: Auto-derive unique slug from identity keypair when WORLD_ID is not set, preventing duplicate 'star-office' slugs on the gateway
+
 ## 0.2.0
 
 ### Minor Changes
