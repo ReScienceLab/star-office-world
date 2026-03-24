@@ -8,7 +8,7 @@
 import path from "node:path";
 import { createWorldServer } from "@resciencelab/agent-world-sdk";
 import type { WorldServer } from "@resciencelab/agent-world-sdk";
-import { loadConfig } from "./config.js";
+import { loadConfig, resolveConfig } from "./config.js";
 import {
   createInitialState,
   getPublicState,
@@ -23,7 +23,7 @@ import { MemoStore } from "./memo-store.js";
 import { registerUIRoutes } from "./ui-routes.js";
 import type { StarOfficeConfig } from "./types.js";
 
-export { loadConfig } from "./config.js";
+export { loadConfig, resolveConfig } from "./config.js";
 export type { StarOfficeConfig } from "./types.js";
 export type {
   OfficeAgent,
@@ -37,7 +37,7 @@ export type {
 export async function createStarOfficeWorld(
   overrides?: Partial<StarOfficeConfig>,
 ): Promise<WorldServer & { sse: SSEManager }> {
-  const config = loadConfig(overrides);
+  const config = await resolveConfig(overrides);
   const dataDir = config.dataDir ?? "./data";
   const state = createInitialState(config);
   const sse = new SSEManager();
