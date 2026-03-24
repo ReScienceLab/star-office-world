@@ -1,5 +1,11 @@
 # @resciencelab/star-office-world
 
+## 0.1.4
+
+### Patch Changes
+
+- 3b5250f: Fix gateway registration: default to production gateway URL so deployed worlds auto-register without requiring GATEWAY_URL env var
+
 ## 0.1.3
 
 ### Patch Changes
