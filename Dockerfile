@@ -18,6 +18,7 @@ VOLUME ["/data"]
 
 ENV STAR_OFFICE_DATA_DIR=/data \
     STAR_OFFICE_MEMORY_DIR=/data/memos \
-    STAR_OFFICE_PORT=19000
+    STAR_OFFICE_PORT=19000 \
+    GATEWAY_URL=https://gateway.agentworlds.ai
 
 CMD ["node", "dist/index.js"]

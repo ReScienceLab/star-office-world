@@ -79,7 +79,7 @@ export async function createStarOfficeWorld(
       publicAddr: config.publicAddr ?? null,
       gatewayUrls: config.gatewayUrls,
       maxAgents: config.maxAgents ?? 20,
-      isPublic: !!config.gatewayUrls?.length,
+      isPublic: true,
       password: config.password ?? "",
       broadcastIntervalMs: config.broadcastIntervalMs ?? 3000,
       dataDir: config.dataDir ?? "./data",
