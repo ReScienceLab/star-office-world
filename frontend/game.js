@@ -730,27 +730,25 @@ function preload() {
   });
 
   this.load.image('office_bg', 'office_bg_small' + (supportsWebP ? '.webp' : '.png') + '?v=');
-  this.load.spritesheet('star_idle', 'star-idle-spritesheet' + getExt('star-idle-spritesheet.png'), { frameWidth: 128, frameHeight: 128 });
-  this.load.spritesheet('star_researching', 'star-researching-spritesheet' + getExt('star-researching-spritesheet.png'), { frameWidth: 128, frameHeight: 105 });
+  this.load.spritesheet('star_idle', 'star-idle-v5.png', { frameWidth: 256, frameHeight: 256 });
 
-  this.load.image('sofa_idle', 'sofa-idle' + getExt('sofa-idle.png'));
-  this.load.spritesheet('sofa_busy', 'sofa-busy-spritesheet' + getExt('sofa-busy-spritesheet.png'), { frameWidth: 256, frameHeight: 256 });
+  this.load.image('sofa_idle', 'sofa-idle-v3.png');
+  this.load.image('sofa_shadow', 'sofa-shadow-v1.png');
 
   this.load.spritesheet('plants', 'plants-spritesheet' + getExt('plants-spritesheet.png'), { frameWidth: 160, frameHeight: 160 });
   this.load.spritesheet('posters', 'posters-spritesheet' + getExt('posters-spritesheet.png'), { frameWidth: 160, frameHeight: 160 });
-  this.load.spritesheet('coffee_machine', 'coffee-machine-spritesheet' + getExt('coffee-machine-spritesheet.png'), { frameWidth: 230, frameHeight: 230 });
+  this.load.spritesheet('coffee_machine', 'coffee-machine-v3-grid.webp', { frameWidth: 230, frameHeight: 230 });
+  this.load.image('coffee_machine_shadow', 'coffee-machine-shadow-v1.png');
   this.load.spritesheet('serverroom', 'serverroom-spritesheet' + getExt('serverroom-spritesheet.png'), { frameWidth: 180, frameHeight: 251 });
 
-  this.load.spritesheet('error_bug', 'error-bug-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 180, frameHeight: 180 });
+  this.load.spritesheet('error_bug', 'error-bug-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 220, frameHeight: 220 });
   this.load.spritesheet('cats', 'cats-spritesheet' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 160, frameHeight: 160 });
-  this.load.image('desk', 'desk' + getExt('desk.png'));
+  this.load.image('desk', 'desk-v3' + getExt('desk-v3.png'));
   this.load.spritesheet('star_working', 'star-working-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 230, frameHeight: 144 });
-  this.load.spritesheet('sync_anim', 'sync-animation-spritesheet-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 256, frameHeight: 256 });
+  this.load.spritesheet('sync_anim', 'sync-animation-v3-grid' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 256, frameHeight: 256 });
   this.load.image('memo_bg', 'memo-bg' + (supportsWebP ? '.webp' : '.png'));
 
-  // 新办公桌：强制 PNG（透明）
-  this.load.image('desk_v2', 'desk-v2.png');
-  this.load.spritesheet('flowers', 'flowers-spritesheet' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 65, frameHeight: 65 });
+  this.load.spritesheet('flowers', 'flowers-bloom-v2' + (supportsWebP ? '.webp' : '.png'), { frameWidth: 65, frameHeight: 65 });
 }
 
 function create() {
@@ -776,15 +774,10 @@ function create() {
 
   areas = LAYOUT.areas;
 
+  var starIdleFrameMax = Math.max(0, (this.textures.get('star_idle')?.frameTotal || 1) - 2);
   this.anims.create({
     key: 'star_idle',
-    frames: this.anims.generateFrameNumbers('star_idle', { start: 0, end: 29 }),
-    frameRate: 12,
-    repeat: -1
-  });
-  this.anims.create({
-    key: 'star_researching',
-    frames: this.anims.generateFrameNumbers('star_researching', { start: 0, end: 95 }),
+    frames: this.anims.generateFrameNumbers('star_idle', { start: 0, end: starIdleFrameMax }),
     frameRate: 12,
     repeat: -1
   });
@@ -860,9 +853,10 @@ function create() {
   });
 
   // === 咖啡机（来自 LAYOUT）===
+  var coffeeFrameMax = Math.max(0, (this.textures.get('coffee_machine')?.frameTotal || 1) - 2);
   this.anims.create({
     key: 'coffee_machine',
-    frames: this.anims.generateFrameNumbers('coffee_machine', { start: 0, end: 95 }),
+    frames: this.anims.generateFrameNumbers('coffee_machine', { start: 0, end: coffeeFrameMax }),
     frameRate: 12.5,
     repeat: -1
   });
