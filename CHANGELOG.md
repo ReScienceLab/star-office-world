@@ -1,5 +1,11 @@
 # @resciencelab/star-office-world
 
+## 0.2.4
+
+### Patch Changes
+
+- 39ac9b5: Fix missing Phaser textures and frame count errors: correct star_idle off-by-one frame calculation, update game.js asset filenames to match versioned files on disk (star-idle-v5, coffee-machine-v3-grid, desk-v3, etc.), and use dynamic frame counts for animations.
+
 ## 0.2.3
 
 ### Patch Changes
