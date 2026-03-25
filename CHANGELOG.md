@@ -1,5 +1,11 @@
 # @resciencelab/star-office-world
 
+## 0.2.2
+
+### Patch Changes
+
+- 230386e: Align env contract with platform: WORLD*ID, WORLD_NAME, WORLD_PASSWORD, MAX_AGENTS, WORLD_PUBLIC now take precedence over legacy STAR_OFFICE*\* aliases. Added isPublic config support so deployed worlds honor platform visibility settings.
+
 ## 0.2.1
 
 ### Patch Changes
