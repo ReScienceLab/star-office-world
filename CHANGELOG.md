@@ -1,5 +1,11 @@
 # @resciencelab/star-office-world
 
+## 0.2.3
+
+### Patch Changes
+
+- e9dfb7d: Fix npm publish pipeline and upgrade agent-world-sdk to 1.6.0
+
 ## 0.2.2
 
 ### Patch Changes
