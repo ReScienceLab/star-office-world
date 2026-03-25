@@ -4942,7 +4942,7 @@ function toggleBrokerPanel() {
             };
 
             // 创建 Star 角色待命动画（每次先移除旧定义，确保不复用历史动画）
-            const starIdleFrameMax = Math.max(0, (this.textures.get('star_idle')?.frameTotal || 1) - 1);
+            const starIdleFrameMax = Math.max(0, (this.textures.get('star_idle')?.frameTotal || 1) - 2);
             if (this.anims.exists('star_idle')) {
                 this.anims.remove('star_idle');
             }
