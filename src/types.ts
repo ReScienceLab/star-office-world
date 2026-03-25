@@ -129,6 +129,7 @@ export interface StarOfficeConfig {
   password?: string;
   adminPassword?: string;
   maxAgents?: number;
+  isPublic?: boolean;
   broadcastIntervalMs?: number;
   dataDir?: string;
   frontendDir?: string;
